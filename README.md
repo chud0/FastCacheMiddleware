@@ -56,17 +56,14 @@ async def update_data(id: str):
 ```
 fast_cache_middleware/
 ├── __init__.py
-├── core/
-│   ├── __init__.py
-│   ├── config.py          # Конфигурационные классы
-│   ├── middleware.py      # Основной middleware
-│   ├── route.py          # Кастомный APIRoute
-│   └── types.py          # Типы и протоколы
+├── config.py          # Конфигурационные классы
+├── middleware.py      # Основной middleware
+├── route.py           # Кастомный APIRoute
+├── types.py           # Типы и протоколы
 ├── stores/
 │   ├── __init__.py
-│   ├── base.py           # Базовый класс хранилища
-│   ├── memory.py         # In-memory хранилище
-│   └── redis.py          # Redis хранилище (в разработке)
+│   ├── base.py        # Базовый класс хранилища
+│   └── memory.py      # In-memory хранилище
 ├── utils/
 │   ├── __init__.py
 │   ├── key_generator.py  # Генераторы ключей
@@ -85,13 +82,13 @@ fast_cache_middleware/
 
 ## Основные компоненты
 
-### Конфигурация (core/config.py)
+### Конфигурация (config.py)
 
 - `CacheConfig` - конфигурация кеширования для GET-запросов
 - `CacheDropConfig` - конфигурация инвалидации для модифицирующих запросов
 - `CacheVisibility` - enum для управления видимостью кеша
 
-### Middleware (core/middleware.py)
+### Middleware (middleware.py)
 
 - `FastCacheMiddleware` - основной middleware для обработки кеширования
 - Интеграция с FastAPI через кастомный `APIRoute`
@@ -102,9 +99,8 @@ fast_cache_middleware/
 
 - `BaseCacheStore` - протокол для реализации хранилищ
 - `MemoryCacheStore` - in-memory реализация
-- `RedisCacheStore` - Redis реализация (в разработке)
 
-### Утилиты (utils/)
+### Утилиты (types.py и др.)
 
 - Генераторы ключей кеширования
 - Валидаторы конфигурации
@@ -115,37 +111,4 @@ fast_cache_middleware/
 Подробные примеры доступны в директории `examples/`:
 
 - `basic.py` - базовое использование middleware
-- `advanced.py` - продвинутые сценарии кеширования
-- `custom_store.py` - реализация кастомного хранилища
-
-## Разработка
-
-### Установка для разработки
-
-```bash
-git clone https://github.com/your-username/fast-cache-middleware.git
-cd fast-cache-middleware
-poetry install
-```
-
-### Запуск тестов
-
-```bash
-poetry run pytest
-```
-
-### Линтинг
-
-```bash
-poetry run black .
-poetry run isort .
-poetry run mypy .
-```
-
-## Лицензия
-
-MIT
-
-## Вклад в проект
-
-Приветствуются pull request'ы и issues. Пожалуйста, убедитесь, что все тесты проходят перед отправкой PR.
+- `
