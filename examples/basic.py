@@ -15,13 +15,13 @@ def get_cache_config() -> CacheConfig:
 def get_cache_drop_config() -> CacheDropConfig:
     return CacheDropConfig(paths=["/data/{id}"], key_template="data_{id}")
 
+# Создание экземпляра FastAPI
+app = FastAPI()
+
 # Инициализация хранилища (in-memory) и middleware
 store = MemoryCacheStore()
-middleware = FastCacheMiddleware(store)
 
-# Создание экземпляра FastAPI с добавлением middleware
-app = FastAPI()
-app.add_middleware(middleware)
+app.add_middleware(FastCacheMiddleware, default_store=store)
 
 # Базовый GET-роут (получение сущности) с кешированием
 @app.get("/data/{id}", dependencies=[Depends(get_cache_config)])
