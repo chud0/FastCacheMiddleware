@@ -1,32 +1,34 @@
 """
-Основной middleware для кеширования.
+Middleware для интеллектуального кеширования FastAPI.
 
-Этот модуль реализует основной middleware для кеширования
-ответов FastAPI.
+Этот модуль реализует middleware для кеширования ответов API
+с поддержкой конфигурации через dependencies и автоматической инвалидации.
 """
 import json
-from typing import Callable, Optional, Type
+import logging
+import time
+from typing import Callable, Dict, Optional, Any
 
 from fastapi import Request, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp
 
 from .config import CacheConfig, CacheDropConfig
-from .types import BaseCacheStore, CacheValue
 from .stores import AbstractCacheStore, MemoryCacheStore
-import logging
-
 
 logger = logging.getLogger(__name__)
 
 
 class FastCacheMiddleware(BaseHTTPMiddleware):
     """
-    Middleware для кеширования ответов FastAPI.
-
-    Этот middleware обрабатывает кеширование и инвалидацию
-    кеша для HTTP запросов.
+    Middleware для интеллектуального кеширования ответов FastAPI.
+    
+    Поддерживает:
+    - Конфигурацию через dependencies
+    - Автоматическую инвалидацию кеша
+    - Гибкую настройку ключей и правил
+    - Заголовки X-Cache (HIT/MISS/BYPASS/EXPIRED)
     """
 
     def __init__(
@@ -44,304 +46,246 @@ class FastCacheMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.default_store = default_store or MemoryCacheStore()
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable,
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
-        Обработка запроса.
-
-        Если запрос – GET с конфигурацией кеширования и не пропускается (не _should_skip_cache), то:
-          – если _get_cached_response вернул кешированный ответ (кеш-хит), то возвращаем его (с заголовком X-Cache: HIT);
-          – если _get_cached_response вернул None (кеш-мисс), то выполняем call_next, затем (если ответ не с ошибкой) кешируем ответ (через _cache_response) и устанавливаем заголовок X-Cache: MISS/EXPIRED.
+        Основная логика обработки запроса.
 
         Args:
             request: HTTP запрос
-            call_next: Следующий обработчик
+            call_next: Следующий обработчик в цепочке
 
         Returns:
-            HTTP ответ (с заголовком X-Cache: HIT/MISS/BYPASS/EXPIRED, если запрос кешируется)
+            HTTP ответ с заголовками кеширования
         """
-        logger.info(f"Request method: {request.method}, URL: {request.url}")
-        
-        # Получаем конфигурацию кеширования из зависимостей
-        cache_config = self._get_cache_config(request)
-        cache_drop_config = self._get_cache_drop_config(request)
-        
-        logger.info(f"cache_config: {cache_config}")
-        logger.info(f"cache_drop_config: {cache_drop_config}")
+        logger.info(f"Processing {request.method} {request.url}")
 
-        # Если это модифицирующий запрос, обрабатываем инвалидацию
-        if cache_drop_config and request.method in cache_drop_config.on_methods:
-            await self._handle_cache_drop(request, cache_drop_config)
+        # Выполняем запрос сначала, чтобы получить доступ к конфигурациям
+        response = await call_next(request)
+
+        # Проверяем, есть ли конфигурации кеширования в request.state
+        cache_config = getattr(request.state, "cache_config", None)
+        cache_drop_config = getattr(request.state, "cache_drop_config", None)
+
+        logger.info(f"Cache config found: {cache_config is not None}")
+        logger.info(f"Cache drop config found: {cache_drop_config is not None}")
 
         # Если это GET запрос с конфигурацией кеширования
         if request.method == "GET" and cache_config:
-            logger.info("Processing GET request with cache config")
-            
-            # Проверяем, нужно ли пропустить кеширование
-            if self._should_skip_cache(request):
-                logger.info("Skipping cache (BYPASS)")
-                response = await call_next(request)
-                response.headers["X-Cache"] = "BYPASS"
-                return response
-            
-            # Проверяем кеш
-            cached_response = await self._get_cached_response(request, cache_config)
-            if cached_response:
-                logger.info("Cache HIT")
-                # Кеш-хит: возвращаем кешированный ответ (с заголовком X-Cache: HIT)
-                return cached_response
-            else:
-                logger.info("Cache MISS")
+            return await self._handle_get_with_cache(request, response, cache_config)
 
-        # Кеш-мисс (или запрос не кешируется): выполняем запрос
-        response = await call_next(request)
-
-        # Если это GET запрос с конфигурацией кеширования и не пропускается, кешируем ответ
-        if (
-            request.method == "GET"
-            and cache_config
-            and not self._should_skip_cache(request)
-        ):
-            # Проверяем, был ли кеш устаревшим
-            cache_status = getattr(request.state, "cache_status", "MISS")
-            
-            logger.info(f"Setting X-Cache header to: {cache_status}")
-            
-            # Устанавливаем заголовок X-Cache (если ответ не с ошибкой)
-            if response.status_code < 400:
-                response.headers["X-Cache"] = cache_status
-            await self._cache_response(request, response, cache_config)
+        # Если это модифицирующий запрос с конфигурацией инвалидации
+        if cache_drop_config and request.method in cache_drop_config.on_methods:
+            await self._handle_cache_invalidation(request, cache_drop_config)
 
         return response
 
-    def _get_cache_config(
-        self,
-        request: Request,
-    ) -> Optional[CacheConfig]:
+    async def _handle_get_with_cache(
+        self, 
+        request: Request, 
+        response: Response, 
+        config: CacheConfig
+    ) -> Response:
         """
-        Получить конфигурацию кеширования из зависимостей.
-
-        Args:
-            request: HTTP запрос
-
-        Returns:
-            Конфигурация кеширования или None
-        """
-        route: Optional[APIRoute] = request.scope.get("route")
-        logger.info(f"Route: {route}")
-        if not route:
-            return None
-
-        logger.info(f"Route dependencies: {route.dependencies}")
-        for dependency in route.dependencies:
-            logger.info(f"Checking dependency: {dependency}")
-            logger.info(f"Dependency.dependency: {dependency.dependency}")
-            
-            # Проверяем, есть ли в state уже вычисленные зависимости
-            if hasattr(request.state, "dependency_cache"):
-                dep_result = request.state.dependency_cache.get(dependency.dependency)
-                if dep_result and isinstance(dep_result, CacheConfig):
-                    logger.info(f"Found cached CacheConfig: {dep_result}")
-                    return dep_result
-            
-            # Если dependency.dependency это функция, которая возвращает CacheConfig, вызываем её
-            try:
-                result = dependency.dependency()
-                logger.info(f"Function call result: {result}, type: {type(result)}")
-                if isinstance(result, CacheConfig):
-                    logger.info(f"Found CacheConfig from function: {result}")
-                    return result
-            except Exception as e:
-                logger.info(f"Failed to call dependency as function: {e}")
-                # Если не получилось вызвать как функцию, проверяем прямо
-                if isinstance(dependency.dependency, CacheConfig):
-                    logger.info(f"Found direct CacheConfig: {dependency.dependency}")
-                    return dependency.dependency
-
-        logger.info("No CacheConfig found")
-        return None
-
-    def _get_cache_drop_config(
-        self,
-        request: Request,
-    ) -> Optional[CacheDropConfig]:
-        """
-        Получить конфигурацию инвалидации из зависимостей.
-
-        Args:
-            request: HTTP запрос
-
-        Returns:
-            Конфигурация инвалидации или None
-        """
-        route: Optional[APIRoute] = request.scope.get("route")
-        if not route:
-            return None
-
-        for dependency in route.dependencies:
-            # Проверяем, есть ли в state уже вычисленные зависимости
-            if hasattr(request.state, "dependency_cache"):
-                dep_result = request.state.dependency_cache.get(dependency.dependency)
-                if dep_result and isinstance(dep_result, CacheDropConfig):
-                    return dep_result
-            
-            # Если dependency.dependency это функция, которая возвращает CacheDropConfig, вызываем её
-            try:
-                result = dependency.dependency()
-                if isinstance(result, CacheDropConfig):
-                    return result
-            except:
-                # Если не получилось вызвать как функцию, проверяем прямо
-                if isinstance(dependency.dependency, CacheDropConfig):
-                    return dependency.dependency
-
-        return None
-
-    async def _handle_cache_drop(
-        self,
-        request: Request,
-        config: CacheDropConfig,
-    ) -> None:
-        """
-        Обработать инвалидацию кеша.
-
-        Args:
-            request: HTTP запрос
-            config: Конфигурация инвалидации
-        """
-        store = self._get_store(request)
-
-        # Инвалидируем по шаблону ключа
-        if config.key_template:
-            key = config.key_template.format(**request.path_params)
-            await store.delete_pattern(key)
-
-        # Инвалидируем по путям
-        for path in config.paths:
-            # Заменяем параметры пути на значения из запроса
-            path_key = path.format(**request.path_params)
-            await store.delete_pattern(path_key)
-
-    async def _get_cached_response(
-        self,
-        request: Request,
-        config: CacheConfig,
-    ) -> Optional[Response]:
-        """
-        Получить кешированный ответ.
-
-        Если кеш-хит (cached не None), то в возвращаемый Response добавляется заголовок X-Cache со значением "HIT".
-        Если кеш устарел, устанавливается флаг для статуса EXPIRED.
-
-        Args:
-            request: HTTP запрос
-            config: Конфигурация кеширования
-
-        Returns:
-            Кешированный ответ (с заголовком X-Cache: HIT) или None (кеш-мисс/expired)
-        """
-        store = self._get_store(request)
-        key = config.key_func(request)
-
-        cached = await store.get(key)
-        if not cached:
-            return None
-
-        # Проверяем, не устарел ли кеш
-        import time
-        if "cached_at" in cached:
-            cached_at = cached["cached_at"]
-            if time.time() - cached_at > config.max_age:
-                # Кеш устарел, помечаем для статуса EXPIRED
-                request.state.cache_status = "EXPIRED"
-                return None
-
-        # Если кеш-хит, то устанавливаем заголовок X-Cache: HIT
-        resp = Response(
-            content=cached["response"],
-            status_code=cached["status_code"],
-            headers=cached["headers"],
-        )
-        resp.headers["X-Cache"] = "HIT"
-        return resp
-
-    async def _cache_response(
-        self,
-        request: Request,
-        response: Response,
-        config: CacheConfig,
-    ) -> None:
-        """
-        Сохранить ответ в кеш.
+        Обработка GET запроса с кешированием.
+        
+        Поскольку запрос уже выполнен, мы можем только сохранить ответ в кеш
+        и установить заголовок X-Cache: MISS.
 
         Args:
             request: HTTP запрос
             response: HTTP ответ
             config: Конфигурация кеширования
+
+        Returns:
+            HTTP ответ с заголовком X-Cache
         """
-        # Не кешируем ответы с ошибками
-        if response.status_code >= 400:
-            return
+        # Проверяем, нужно ли пропустить кеш
+        if self._should_bypass_cache(request):
+            response.headers["X-Cache"] = "BYPASS"
+            logger.info("Cache bypassed")
+            return response
 
-        store = self._get_store(request)
-        key = config.key_func(request)
+        # Генерируем ключ кеша
+        cache_key = config.key_func(request)
+        store = self._get_store(config)
 
+        # Проверяем кеш (для будущих запросов)
+        cached_data = await store.get(cache_key)
+        
+        if cached_data:
+            # Проверяем, не истек ли кеш
+            if self._is_cache_expired(cached_data, config.max_age):
+                logger.info(f"Cache expired for key: {cache_key}")
+                response.headers["X-Cache"] = "EXPIRED"
+                await self._store_response(store, cache_key, response, config)
+                return response
+            
+            # Кеш-хит (но мы уже выполнили запрос, так что это для следующего раза)
+            logger.info(f"Cache exists for key: {cache_key}")
+            response.headers["X-Cache"] = "MISS"  # Текущий запрос все равно MISS
+        else:
+            # Кеш-мисс
+            logger.info(f"Cache miss for key: {cache_key}")
+            response.headers["X-Cache"] = "MISS"
+        
+        # Сохраняем в кеш если ответ успешный
+        if response.status_code < 400:
+            await self._store_response(store, cache_key, response, config)
+
+        return response
+
+    async def _handle_cache_invalidation(
+        self, 
+        request: Request, 
+        config: CacheDropConfig
+    ) -> None:
+        """
+        Обработка инвалидации кеша.
+
+        Args:
+            request: HTTP запрос
+            config: Конфигурация инвалидации
+        """
+        store = self.default_store
+
+        # Инвалидация по шаблону ключа
+        if config.key_template:
+            key = config.key_template.format(**request.path_params)
+            await store.delete_pattern(key)
+            logger.info(f"Invalidated cache by key template: {key}")
+
+        # Инвалидация по путям
+        for path in config.paths:
+            path_key = path.format(**request.path_params)
+            await store.delete_pattern(path_key)
+            logger.info(f"Invalidated cache for path: {path_key}")
+
+    def _should_bypass_cache(self, request: Request) -> bool:
+        """
+        Проверка, нужно ли обходить кеш.
+
+        Args:
+            request: HTTP запрос
+
+        Returns:
+            True, если кеш нужно обойти
+        """
+        cache_control = request.headers.get("cache-control", "").lower()
+        return "no-cache" in cache_control or "no-store" in cache_control
+
+    def _is_cache_expired(self, cached_data: Dict, max_age: int) -> bool:
+        """
+        Проверка истечения кеша.
+
+        Args:
+            cached_data: Данные из кеша
+            max_age: Максимальный возраст в секундах
+
+        Returns:
+            True, если кеш истек
+        """
+        cached_at = cached_data.get("cached_at", 0)
+        return time.time() - cached_at > max_age
+
+    def _create_response_from_cache(self, cached_data: Dict) -> Response:
+        """
+        Создание ответа из кешированных данных.
+
+        Args:
+            cached_data: Данные из кеша
+
+        Returns:
+            HTTP ответ
+        """
+        return Response(
+            content=cached_data["content"],
+            status_code=cached_data["status_code"],
+            headers=cached_data["headers"],
+            media_type=cached_data.get("media_type")
+        )
+
+    async def _store_response(
+        self, 
+        store: AbstractCacheStore, 
+        cache_key: str, 
+        response: Response, 
+        config: CacheConfig
+    ) -> None:
+        """
+        Сохранение ответа в кеш.
+
+        Args:
+            store: Хранилище кеша
+            cache_key: Ключ кеша
+            response: HTTP ответ
+            config: Конфигурация кеширования
+        """
         # Получаем тело ответа
         body = b""
         async for chunk in response.body_iterator:
             body += chunk
 
-        # Создаем копию ответа с телом
+        # Правильно восстанавливаем тело ответа
         response.body = body
+        
+        # Создаем новый body_iterator из сохраненного тела
+        async def body_iterator():
+            yield body
+        
+        response.body_iterator = body_iterator()
 
-        # Сохраняем в кеш с временной меткой
-        import time
-        await store.set(
-            key=key,
-            value={
-                "response": body,
-                "headers": dict(response.headers),
-                "status_code": response.status_code,
-                "cached_at": time.time(),
-            },
-            max_age=config.max_age,
-        )
+        # Подготавливаем данные для кеширования
+        cache_data = {
+            "content": body,
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "media_type": response.media_type,
+            "cached_at": time.time(),
+        }
 
-    def _get_store(self, request: Request) -> AbstractCacheStore:
+        # Сохраняем в кеш
+        await store.set(cache_key, cache_data, config.max_age)
+        logger.info(f"Stored response in cache with key: {cache_key}")
+
+    def _get_store(self, config: CacheConfig) -> AbstractCacheStore:
         """
-        Получить хранилище кеша для запроса.
+        Получение хранилища кеша.
 
         Args:
-            request: HTTP запрос
+            config: Конфигурация кеширования
 
         Returns:
-            Хранилище кеша
+            Экземпляр хранилища кеша
         """
-        # В будущем здесь можно добавить логику выбора
-        # хранилища на основе конфигурации
+        # Пока используем default_store
+        # В будущем можно добавить логику выбора на основе config.cache_store
         return self.default_store
 
-    def _should_skip_cache(self, request: Request) -> bool:
-        """
-        Проверить, нужно ли пропустить кеширование.
 
-        Args:
-            request: HTTP запрос
+# Функции-помощники для использования в dependencies
+def cache_dependency(config: CacheConfig):
+    """
+    Dependency для установки конфигурации кеширования.
+    
+    Args:
+        config: Конфигурация кеширования
+    """
+    def dependency(request: Request):
+        request.state.cache_config = config
+        return config
+    
+    return dependency
 
-        Returns:
-            True, если кеширование нужно пропустить
-        """
-        # Пропускаем кеширование для запросов с заголовком
-        # Cache-Control: no-cache
-        if "no-cache" in request.headers.get("cache-control", "").lower():
-            return True
 
-        # Пропускаем кеширование для запросов с заголовком
-        # Cache-Control: no-store
-        if "no-store" in request.headers.get("cache-control", "").lower():
-            return True
-
-        return False 
+def cache_drop_dependency(config: CacheDropConfig):
+    """
+    Dependency для установки конфигурации инвалидации.
+    
+    Args:
+        config: Конфигурация инвалидации
+    """
+    def dependency(request: Request):
+        request.state.cache_drop_config = config
+        return config
+    
+    return dependency 
