@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 
-from ..core.types import CacheValue
+from ..types import CacheValue
 
 
 class MemoryCacheStore:

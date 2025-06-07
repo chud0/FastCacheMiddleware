@@ -14,7 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .config import CacheConfig, CacheDropConfig
 from .types import BaseCacheStore, CacheValue
-from ..stores.base import AbstractCacheStore
+from .stores.base import AbstractCacheStore
 
 
 class FastCacheMiddleware(BaseHTTPMiddleware):

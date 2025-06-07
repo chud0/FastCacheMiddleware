@@ -6,7 +6,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from ..core.types import BaseCacheStore, CacheValue
+from ..types import BaseCacheStore, CacheValue
 
 
 class AbstractCacheStore(ABC, BaseCacheStore):

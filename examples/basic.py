@@ -11,9 +11,9 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware import Middleware
 
-from ..core.config import CacheConfig, CacheDropConfig, CacheVisibility
-from ..core.middleware import FastCacheMiddleware
-from ..stores.memory import MemoryCacheStore
+from fast_cache_middleware.config import CacheConfig, CacheDropConfig, CacheVisibility
+from fast_cache_middleware.middleware import FastCacheMiddleware
+from fast_cache_middleware.stores.memory import MemoryCacheStore
 
 
 app = FastAPI(
