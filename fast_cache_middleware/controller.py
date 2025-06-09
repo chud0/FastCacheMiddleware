@@ -102,7 +102,7 @@ class Controller:
             logging.getLogger(__name__).debug(f"Ошибка извлечения cache config: {e}")
             return None, None
     
-    async def should_cache_request(self, request: Request) -> bool:
+    async def should_cache_request(self, request: Request, cache_config: tp.Optional["CacheConfig"]) -> bool:
         """Определяет, нужно ли кешировать данный запрос.
         
         Args:
@@ -119,9 +119,7 @@ class Controller:
         cache_control = request.headers.get("cache-control", "").lower()
         if "no-cache" in cache_control or "no-store" in cache_control:
             return False
-            
-        # Ищем конфигурацию кеша в ASGI extensions
-        cache_config, _ = self._extract_cache_config(request)
+
         if cache_config is None:
             return False
             

@@ -9,10 +9,60 @@ from .controller import Controller
 from uvicorn._types import ASGIReceiveCallable, ASGISendCallable
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
 import inspect
+from fastapi import FastAPI, routing
+
 
 
 logger = logging.getLogger(__name__)
 
+
+def get_app_routes(app: FastAPI) -> tp.List[routing.BaseRoute]:
+    """Получает все роуты из FastAPI приложения.
+    
+    Рекурсивно обходит все роутеры приложения и собирает их роуты.
+    
+    Args:
+        app: FastAPI приложение
+        
+    Returns:
+        Список всех роутов приложения
+    """
+    routes = []
+    
+    # Получаем роуты из основного роутера приложения
+    routes.extend(get_routes(app.router))
+    
+    # Обходим все вложенные роутеры
+    for route in app.router.routes:
+        if isinstance(route, Mount):
+            if isinstance(route.app, routing.APIRouter):
+                routes.extend(get_routes(route.app))
+    
+    return routes
+
+def get_routes(router: routing.APIRouter) -> tp.List[routing.BaseRoute]:
+    """Рекурсивно получает все роуты из роутера.
+    
+    Обходит все роуты в роутере и его подроутерах, собирая их в единый список.
+    
+    Args:
+        router: APIRouter для обхода
+        
+    Returns:
+        Список всех роутов из роутера и его подроутеров
+    """
+    routes = []
+    
+    # Получаем все роуты из текущего роутера
+    for route in router.routes:
+        if isinstance(route, Route):
+            routes.append(route)
+        elif isinstance(route, Mount):
+            # Рекурсивно обходим подроутеры
+            if isinstance(route.app, routing.APIRouter):
+                routes.extend(get_routes(route.app))
+            
+    return routes
 
 class RouteInfo:
     """Информация о роуте с кеш конфигурацией."""
@@ -60,47 +110,18 @@ class FastCacheMiddleware:
         self.app = app
         self.storage = storage or InMemoryStorage()
         self.controller = controller or Controller()
-        self.routes_info: tp.List[RouteInfo] = []
-        self._routes_analyzed = False
-    
-    def _analyze_routes(self, app: ASGIApp) -> None:
-        """Анализирует роуты приложения и извлекает кеш конфигурации.
-        
-        Args:
-            app: ASGI приложение
-        """
-        if self._routes_analyzed:
-            return
-            
-        try:
-            # Пытаемся получить роуты из FastAPI/Starlette приложения
-            if hasattr(app, 'routes'):
-                routes = app.routes
-            elif hasattr(app, 'router') and hasattr(app.router, 'routes'):
-                routes = app.router.routes
-            else:
-                logger.warning("Не удалось найти роуты в приложении")
-                return
-            
-            self._extract_routes_info(routes)
-            self._routes_analyzed = True
-            logger.info(f"Проанализировано {len(self.routes_info)} роутов с кеш конфигурациями")
-            
-        except Exception as e:
-            logger.warning(f"Ошибка анализа роутов: {e}")
-    
-    def _extract_routes_info(self, routes: tp.List) -> None:
+
+
+
+
+    def _extract_routes_info(self, routes: tp.List) -> tp.List[RouteInfo]:
         """Рекурсивно извлекает информацию о роутах и их dependencies.
         
         Args:
             routes: Список роутов для анализа
         """
-        for route in routes:
-            # Обрабатываем Mount (например, для вложенных роутеров)
-            if isinstance(route, Mount) and hasattr(route, 'routes'):
-                self._extract_routes_info(route.routes)
-                continue
-            
+        routes_info = []
+        for route in routes:           
             # Обрабатываем обычные Route
             if isinstance(route, Route):
                 cache_config, cache_drop_config = self._extract_cache_configs_from_route(route)
@@ -111,7 +132,11 @@ class FastCacheMiddleware:
                         cache_config=cache_config,
                         cache_drop_config=cache_drop_config
                     )
-                    self.routes_info.append(route_info)
+                    routes_info.append(route_info)
+            else:
+                logger.warning(f"Неизвестный тип роута: {type(route)}")
+        
+        return routes_info
     
     def _extract_cache_configs_from_route(
         self, 
@@ -230,9 +255,8 @@ class FastCacheMiddleware:
             await self.app(scope, receive, send)
             return
         
-        # Анализируем роуты при первом запросе
-        if not self._routes_analyzed:
-            self._analyze_routes(self.app)
+        app_routes = get_app_routes(scope['app'])
+        self.routes_info: tp.List[RouteInfo] = self._extract_routes_info(app_routes)
         
         request = Request(scope, receive)
         
@@ -293,7 +317,7 @@ class FastCacheMiddleware:
             cache_config = route_info.cache_config()
             
             # Проверяем, нужно ли кешировать этот запрос
-            should_cache = await self.controller.should_cache_request(request)
+            should_cache = await self.controller.should_cache_request(request, cache_config)
             if not should_cache:
                 await self.app(scope, receive, send)
                 return
@@ -313,16 +337,17 @@ class FastCacheMiddleware:
                 logger.debug(f"Возвращаем кешированный ответ для ключа: {cache_key}")
                 await cached_response(scope, receive, send)
                 return
-            
-            # Кеш не найден - выполняем запрос и кешируем результат
-            await self._execute_and_cache_request(
-                cache_config, cache_key, request, scope, receive, send
-            )
-            
         except Exception as e:
             logger.warning(f"Ошибка при обработке кеширования: {e}")
             # При ошибке выполняем запрос без кеширования
             await self.app(scope, receive, send)
+
+        # Кеш не найден - выполняем запрос и кешируем результат
+        await self._execute_and_cache_request(
+            cache_config, cache_key, request, scope, receive, send
+        )
+            
+
     
     async def _execute_and_cache_request(
         self,
@@ -349,7 +374,10 @@ class FastCacheMiddleware:
             """Wrapper для перехвата и сохранения ответа."""
             if message["type"] == "http.response.start":
                 response_holder["status"] = message["status"]
-                response_holder["headers"] = message.get("headers", [])
+                response_holder["headers"] = [
+                    (k.decode(), v.decode())
+                    for k, v in message.get("headers", [])
+                ]
                 response_holder["body"] = b""
             elif message["type"] == "http.response.body":
                 body = message.get("body", b"")
