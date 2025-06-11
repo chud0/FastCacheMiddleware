@@ -11,4 +11,4 @@ from .basic import app as basic_app
 
 __all__ = [
     "basic_app",
-] 
+]

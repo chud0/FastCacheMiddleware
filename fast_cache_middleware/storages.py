@@ -9,8 +9,9 @@ from .serializers import BaseSerializer, JSONSerializer, Metadata
 # Определяем тип для хранимого ответа
 StoredResponse: TypeAlias = tp.Tuple[Response, Request, Metadata]
 
+
 # Определяем базовый класс для хранилища кэша
-class BaseStorage:   
+class BaseStorage:
     def __init__(
         self,
         serializer: tp.Optional[BaseSerializer] = None,
@@ -19,7 +20,9 @@ class BaseStorage:
         self._serializer = serializer or JSONSerializer()
         self._ttl = ttl
 
-    async def store(self, key: str, response: Response, request: Request, metadata: Metadata) -> None:
+    async def store(
+        self, key: str, response: Response, request: Request, metadata: Metadata
+    ) -> None:
         raise NotImplementedError()
 
     async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
@@ -48,7 +51,9 @@ class InMemoryStorage(BaseStorage):
         super().__init__(serializer=serializer, ttl=ttl)
         self._storage: tp.Dict[str, tp.Union[str, bytes]] = {}
 
-    async def store(self, key: str, response: Response, request: Request, metadata: Metadata) -> None:
+    async def store(
+        self, key: str, response: Response, request: Request, metadata: Metadata
+    ) -> None:
         """Сохраняет ответ в кэш.
 
         Args:
@@ -71,7 +76,7 @@ class InMemoryStorage(BaseStorage):
         """
         if key not in self._storage:
             return None
-            
+
         serialized = self._storage[key]
         return self._serializer.loads(serialized)
 
