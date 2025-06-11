@@ -1,7 +1,7 @@
-from fastapi import Depends
 import typing as tp
+
+from fastapi import Depends, params
 from starlette.requests import Request
-from fastapi import params
 
 
 class BaseCacheConfigDepends(params.Depends):

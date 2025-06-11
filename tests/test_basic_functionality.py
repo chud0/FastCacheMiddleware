@@ -1,15 +1,17 @@
 """Базовые тесты для FastCacheMiddleware с резолюцией роутов."""
 
-import pytest
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
+
+import pytest
+from fastapi import Depends, FastAPI
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
-from fast_cache_middleware import FastCacheMiddleware, CacheConfig, CacheDropConfig
+
+from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
 from fast_cache_middleware.storages import InMemoryStorage
-from fastapi import FastAPI, Depends
 
 if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
@@ -188,8 +190,9 @@ class TestMiddlewareCaching:
         assert await storage.retrieve("test_key") is None
 
         # Создаем тестовые данные для сохранения
-        from starlette.responses import Response
         from datetime import datetime
+
+        from starlette.responses import Response
 
         response = Response("test content")
         scope = {

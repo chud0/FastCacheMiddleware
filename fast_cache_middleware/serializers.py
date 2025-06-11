@@ -1,9 +1,8 @@
-import typing as tp
-from starlette.responses import Response
-from starlette.requests import Request
 import json
-import copy
-from datetime import datetime
+import typing as tp
+
+from starlette.requests import Request
+from starlette.responses import Response
 
 # Определяем типы для метаданных и хранимого ответа
 Metadata: tp.TypeAlias = tp.Dict[str, tp.Any]
@@ -32,9 +31,11 @@ class JSONSerializer(BaseSerializer):
             "response": {
                 "status_code": response.status_code,
                 "headers": [[k.decode(), v.decode()] for k, v in response.headers.raw],
-                "content": response.body.decode("utf-8", errors="ignore")
-                if response.body
-                else None,
+                "content": (
+                    response.body.decode("utf-8", errors="ignore")
+                    if response.body
+                    else None
+                ),
             },
             "request": {
                 "method": request.method,
@@ -54,9 +55,11 @@ class JSONSerializer(BaseSerializer):
         # Восстанавливаем Response
         response_data = parsed["response"]
         response = Response(
-            content=response_data["content"].encode("utf-8")
-            if response_data["content"]
-            else b"",
+            content=(
+                response_data["content"].encode("utf-8")
+                if response_data["content"]
+                else b""
+            ),
             status_code=response_data["status_code"],
             headers=dict(response_data["headers"]),
         )

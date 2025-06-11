@@ -7,12 +7,14 @@
 4. Инвалидация кеша при модифицирующих запросах
 """
 
-from fastapi import FastAPI, Depends, Request
-from fast_cache_middleware import FastCacheMiddleware, CacheConfig, CacheDropConfig
 import time
-import uvicorn
 import typing as tp
+
+import uvicorn
+from fastapi import Depends, FastAPI, Request
 from starlette.responses import JSONResponse
+
+from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
 
 # Создаем FastAPI приложение
 app = FastAPI(title="FastCacheMiddleware Basic Example")
