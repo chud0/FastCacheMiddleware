@@ -7,11 +7,13 @@
 4. Инвалидация кеша при модифицирующих запросах
 """
 
+import asyncio
 import time
 import typing as tp
 
 import uvicorn
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
 from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
@@ -23,26 +25,29 @@ app = FastAPI(title="FastCacheMiddleware Basic Example")
 app.add_middleware(FastCacheMiddleware)
 
 
-# Функции для создания кеш конфигураций
-def short_cache() -> CacheConfig:
-    """Короткое кеширование - 30 секунд."""
-    return CacheConfig(max_age=30)
-
-
-def long_cache() -> CacheConfig:
-    """Длинное кеширование - 5 минут."""
-    return CacheConfig(max_age=300)
-
-
 def custom_key_func(request: Request) -> str:
     # Ключ включает user-id из заголовков если есть
     user_id = request.headers.get("user-id", "anonymous")
     return f"{request.url.path}:user:{user_id}"
 
 
-def invalidate_users_cache() -> CacheDropConfig:
-    """Конфигурация для инвалидации кеша пользователей."""
-    return CacheDropConfig(paths=["/users/*", "/user/*"])
+class User(BaseModel):
+    name: str
+    email: str
+
+
+class FullUser(User):
+    user_id: int
+
+
+class UserResponse(FullUser):
+    timestamp: float = Field(default_factory=time.time)
+
+
+_USERS_STORAGE: tp.Dict[int, User] = {
+    1: User(name="John Doe", email="john.doe@example.com"),
+    2: User(name="Jane Doe", email="jane.doe@example.com"),
+}
 
 
 # Роуты с различными конфигурациями кеширования
@@ -51,16 +56,16 @@ def invalidate_users_cache() -> CacheDropConfig:
 @app.get("/")
 async def root() -> tp.Dict[str, tp.Union[str, float]]:
     """Корневой роут без кеширования."""
-    return {"message": "FastCacheMiddleware Basic Example", "timestamp": time.time()}
+    return {
+        "message": "Without cache response",
+        "timestamp": time.time(),
+        "cache_duration": "0 seconds",
+    }
 
 
 @app.get("/fast", dependencies=[CacheConfig(max_age=30)])
 async def fast_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
-    """Быстрый endpoint с коротким кешированием (30 секунд).
-
-    Middleware анализирует dependencies и находит CacheConfig.
-    При первом запросе ответ кешируется на 30 секунд.
-    """
+    """Быстрый endpoint с коротким кешированием (30 секунд)."""
     return {
         "message": "Fast cached response",
         "timestamp": time.time(),
@@ -71,16 +76,12 @@ async def fast_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
 @app.get("/slow", dependencies=[CacheConfig(max_age=300)])
 async def slow_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     """Медленный endpoint с длинным кешированием (5 минут)."""
-    # Имитируем медленное вычисление
-    import asyncio
-
     await asyncio.sleep(0.5)
 
     return {
         "message": "Slow cached response",
         "timestamp": time.time(),
-        "cache_duration": "5 minutes",
-        "computed": True,
+        "cache_duration": "300 seconds",
     }
 
 
@@ -88,94 +89,59 @@ async def slow_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     "/users/{user_id}",
     dependencies=[CacheConfig(max_age=60, key_func=custom_key_func)],
 )
-async def get_user(user_id: int) -> tp.Dict[str, tp.Union[str, float]]:
+async def get_user(user_id: int) -> UserResponse:
     """Получение пользователя с кастомным ключом кеширования.
 
     Ключ кеша включает user-id из заголовков для персонализации.
     """
-    # Имитируем загрузку из базы данных
-    import asyncio
+    user = _USERS_STORAGE.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    await asyncio.sleep(0.2)
-
-    return {
-        "user_id": user_id,
-        "name": f"User {user_id}",
-        "email": f"user{user_id}@example.com",
-        "timestamp": time.time(),
-    }
+    return UserResponse(user_id=user_id, name=user.name, email=user.email)
 
 
-@app.get("/data/{item_id}", dependencies=[CacheConfig(max_age=300)])
-async def get_data(item_id: str) -> tp.Dict[str, tp.Union[str, float]]:
-    """Получение данных с длинным кешированием."""
-    return {
-        "item_id": item_id,
-        "data": f"Some data for {item_id}",
-        "timestamp": time.time(),
-    }
+@app.get("/users", dependencies=[CacheConfig(max_age=180)])
+async def get_users() -> tp.List[UserResponse]:
+    return [
+        UserResponse(user_id=user_id, name=user.name, email=user.email)
+        for user_id, user in _USERS_STORAGE.items()
+    ]
 
 
-# Роуты для модификации с инвалидацией кеша
-
-
-@app.post(
-    "/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*", "/user/*"])]
-)
-async def update_user(
-    user_id: int, user_data: tp.Dict[str, tp.Any]
-) -> tp.Dict[str, tp.Union[str, float]]:
-    """Обновление пользователя с инвалидацией кеша.
+@app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
+async def create_user(user_id: int, user_data: User) -> UserResponse:
+    """Создание пользователя с инвалидацией кеша.
 
     Этот POST запрос инвалидирует кеш для всех /users/* путей.
     """
-    return {
-        "user_id": user_id,
-        "message": "User updated",
-        "cache_invalidated": True,
-        "timestamp": time.time(),
-    }
+    _USERS_STORAGE[user_id] = user_data
+
+    return UserResponse(user_id=user_id, name=user_data.name, email=user_data.email)
 
 
-@app.delete(
-    "/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*", "/user/*"])]
+@app.put(
+    "/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users", "/users/*"])]
 )
-async def delete_user(user_id: int) -> tp.Dict[str, tp.Union[str, float]]:
+async def update_user(user_id: int, user_data: User) -> UserResponse:
+    """Обновление пользователя с инвалидацией кеша."""
+    user = _USERS_STORAGE.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    _USERS_STORAGE[user_id] = user_data
+
+    return UserResponse(user_id=user_id, name=user_data.name, email=user_data.email)
+
+
+@app.delete("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
+async def delete_user(user_id: int) -> UserResponse:
     """Удаление пользователя с инвалидацией кеша."""
-    return {
-        "user_id": user_id,
-        "message": "User deleted",
-        "cache_invalidated": True,
-        "timestamp": time.time(),
-    }
+    user = _USERS_STORAGE.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    del _USERS_STORAGE[user_id]
 
-
-@app.get("/stats")
-async def get_stats() -> tp.Dict[str, tp.Union[str, float]]:
-    """Статистика (не кешируется)."""
-    return {
-        "total_requests": "dynamic",
-        "cache_hits": "dynamic",
-        "timestamp": time.time(),
-        "note": "This endpoint is not cached",
-    }
-
-
-# Демонстрационные роуты для тестирования
-
-
-@app.get("/test/cache-headers")
-async def test_cache_headers() -> JSONResponse:
-    """Тестирование заголовков кеширования."""
-    response = JSONResponse(
-        {"message": "Response with cache headers", "timestamp": time.time()}
-    )
-
-    # Добавляем заголовки кеширования
-    response.headers["Cache-Control"] = "public, max-age=60"
-    response.headers["ETag"] = '"test-etag-123"'
-
-    return response
+    return UserResponse(user_id=user_id, name=user.name, email=user.email)
 
 
 if __name__ == "__main__":
