@@ -10,6 +10,8 @@ from uvicorn._types import ASGIReceiveCallable, ASGISendCallable
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
 import inspect
 from fastapi import FastAPI, routing
+import copy
+
 
 
 
@@ -160,54 +162,16 @@ class FastCacheMiddleware:
                 return None, None
             
             # Анализируем dependencies если они есть
-            dependencies = getattr(route, 'dependencies', [])
-            
-            for dependency in dependencies:
-                # Dependency может быть Depends объектом
-                if hasattr(dependency, 'dependency'):
-                    dep_func = dependency.dependency
-                    
-                    # Проверяем, возвращает ли функция кеш конфигурацию
-                    if callable(dep_func):
-                        try:
-                            # Пытаемся получить return annotation
-                            sig = inspect.signature(dep_func)
-                            return_annotation = sig.return_annotation
-                            
-                            if return_annotation == CacheConfig or (
-                                hasattr(return_annotation, '__origin__') and 
-                                return_annotation.__origin__ is type and 
-                                issubclass(return_annotation.__args__[0] if return_annotation.__args__ else object, CacheConfig)
-                            ):
-                                cache_config = dep_func
-                            elif return_annotation == CacheDropConfig or (
-                                hasattr(return_annotation, '__origin__') and 
-                                return_annotation.__origin__ is type and 
-                                issubclass(return_annotation.__args__[0] if return_annotation.__args__ else object, CacheDropConfig)
-                            ):
-                                cache_drop_config = dep_func
-                        except Exception:
-                            # Если не удалось проанализировать аннотации, пробуем вызвать
-                            try:
-                                result = dep_func()
-                                if isinstance(result, CacheConfig):
-                                    cache_config = dep_func
-                                elif isinstance(result, CacheDropConfig):
-                                    cache_drop_config = dep_func
-                            except Exception:
-                                continue
-            
-            # Также анализируем сигнатуру самого endpoint
-            if endpoint and callable(endpoint):
-                sig = inspect.signature(endpoint)
-                for param_name, param in sig.parameters.items():
-                    if param.annotation == CacheConfig:
-                        # Ищем соответствующую dependency функцию в default
-                        if hasattr(param, 'default') and hasattr(param.default, 'dependency'):
-                            cache_config = param.default.dependency
-                    elif param.annotation == CacheDropConfig:
-                        if hasattr(param, 'default') and hasattr(param.default, 'dependency'):
-                            cache_drop_config = param.default.dependency
+            for dependency in getattr(route, 'dependencies', []):
+                if isinstance(dependency, BaseCacheConfigDepends):
+                    # нужно сделать копию, т.к. dependency может быть уничтожен
+                    dependency = copy.deepcopy(dependency)
+                    if isinstance(dependency, CacheConfig):
+                        cache_config = dependency
+                    elif isinstance(dependency, CacheDropConfig):
+                        cache_drop_config = dependency
+                    continue
+
                             
         except Exception as e:
             logger.debug(f"Ошибка анализа dependencies роута {route}: {e}")
@@ -314,8 +278,14 @@ class FastCacheMiddleware:
         """
         try:
             # Получаем кеш конфигурацию
-            cache_config = route_info.cache_config()
-            
+            cache_config = route_info.cache_config
+        except Exception as e:
+            logger.warning(f"Ошибка при получении кеш конфигурации: {e}")
+            await self.app(scope, receive, send)
+            return
+        
+        
+        try:
             # Проверяем, нужно ли кешировать этот запрос
             should_cache = await self.controller.should_cache_request(request, cache_config)
             if not should_cache:

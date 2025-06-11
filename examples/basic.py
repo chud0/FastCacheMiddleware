@@ -54,7 +54,7 @@ async def root():
     return {"message": "FastCacheMiddleware Basic Example", "timestamp": time.time()}
 
 
-@app.get("/fast", dependencies=[Depends(short_cache)])
+@app.get("/fast", dependencies=[CacheConfig(max_age=30)])
 async def fast_endpoint():
     """Быстрый endpoint с коротким кешированием (30 секунд).
     
@@ -68,7 +68,7 @@ async def fast_endpoint():
     }
 
 
-@app.get("/slow", dependencies=[Depends(long_cache)])
+@app.get("/slow", dependencies=[CacheConfig(max_age=300)])
 async def slow_endpoint():
     """Медленный endpoint с длинным кешированием (5 минут)."""
     # Имитируем медленное вычисление
@@ -83,7 +83,7 @@ async def slow_endpoint():
     }
 
 
-@app.get("/users/{user_id}", dependencies=[Depends(custom_key_cache)])
+@app.get("/users/{user_id}", dependencies=[CacheConfig(max_age=60, key_func=custom_key_cache)])
 async def get_user(user_id: int):
     """Получение пользователя с кастомным ключом кеширования.
     
@@ -101,7 +101,7 @@ async def get_user(user_id: int):
     }
 
 
-@app.get("/data/{item_id}", dependencies=[Depends(long_cache)])
+@app.get("/data/{item_id}", dependencies=[CacheConfig(max_age=300)])
 async def get_data(item_id: str):
     """Получение данных с длинным кешированием."""
     return {
@@ -113,7 +113,7 @@ async def get_data(item_id: str):
 
 # Роуты для модификации с инвалидацией кеша
 
-@app.post("/users/{user_id}", dependencies=[Depends(invalidate_users_cache)])
+@app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*", "/user/*"])])
 async def update_user(user_id: int, user_data: dict):
     """Обновление пользователя с инвалидацией кеша.
     
@@ -127,7 +127,7 @@ async def update_user(user_id: int, user_data: dict):
     }
 
 
-@app.delete("/users/{user_id}", dependencies=[Depends(invalidate_users_cache)])
+@app.delete("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*", "/user/*"])])
 async def delete_user(user_id: int):
     """Удаление пользователя с инвалидацией кеша."""
     return {
