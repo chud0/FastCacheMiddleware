@@ -12,6 +12,7 @@ from uvicorn._types import ASGIReceiveCallable, ASGISendCallable
 
 from .controller import Controller
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
+from .schemas import RouteInfo
 from .storages import BaseStorage, InMemoryStorage
 
 logger = logging.getLogger(__name__)
@@ -65,22 +66,6 @@ def get_routes(router: routing.APIRouter) -> tp.List[routing.BaseRoute]:
                 routes.extend(get_routes(route.app))
 
     return routes
-
-
-class RouteInfo:
-    """Информация о роуте с кеш конфигурацией."""
-
-    def __init__(
-        self,
-        route: Route,
-        cache_config: tp.Optional[BaseCacheConfigDepends] = None,
-        cache_drop_config: tp.Optional[BaseCacheConfigDepends] = None,
-    ):
-        self.route = route
-        self.cache_config = cache_config
-        self.cache_drop_config = cache_drop_config
-        self.path_regex = getattr(route, "path_regex", None)
-        self.methods = getattr(route, "methods", set())
 
 
 class FastCacheMiddleware:
@@ -188,24 +173,10 @@ class FastCacheMiddleware:
         Returns:
             RouteInfo если найден соответствующий роут, иначе None
         """
-        request_path = request.url.path
-        request_method = request.method
-
         for route_info in self.routes_info:
-            # Проверяем метод
-            if route_info.methods and request_method not in route_info.methods:
-                continue
-
-            # Проверяем путь
-            if route_info.path_regex:
-                match = route_info.path_regex.match(request_path)
-                if match:
-                    return route_info
-            else:
-                # Fallback на простое сравнение
-                route_path = getattr(route_info.route, "path", "")
-                if route_path == request_path:
-                    return route_info
+            match_mode, _ = route_info.route.matches(request.scope)
+            if match_mode == routing.Match.FULL:
+                return route_info
 
         return None
 
@@ -391,12 +362,7 @@ class FastCacheMiddleware:
             route_info: Информация о роуте
             request: HTTP запрос
         """
-        try:
-            cache_drop_config = route_info.cache_drop_config()
-
-            if hasattr(cache_drop_config, "paths"):
-                logger.info(f"Инвалидация кеша для путей: {cache_drop_config.paths}")
-                # В реальной реализации здесь будет логика инвалидации по паттернам
-
-        except Exception as e:
-            logger.warning(f"Ошибка при инвалидации кеша: {e}")
+        if cc := route_info.cache_drop_config:
+            await self.controller.invalidate_cache(
+                cc, request, self.routes_info, self.storage
+            )

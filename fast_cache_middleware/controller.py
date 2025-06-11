@@ -1,5 +1,4 @@
-import http
-import re
+import logging
 import typing as tp
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -8,9 +7,11 @@ from hashlib import blake2b
 from starlette.requests import Request
 from starlette.responses import Response
 
-if tp.TYPE_CHECKING:
-    from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
-    from .storages import BaseStorage
+from .depends import CacheConfig, CacheDropConfig
+from .schemas import RouteInfo
+from .storages import BaseStorage
+
+logger = logging.getLogger(__name__)
 
 
 def generate_key(request: Request) -> str:
@@ -52,6 +53,7 @@ class Controller:
     4. Обработка инвалидации кеша по паттернам URL
     5. Проверка HTTP заголовков кеширования
     6. Интеграция с FastAPI dependencies через ASGI scope extensions
+    7. Инвалидация кеша по паттернам URL
 
     Поддерживает:
     - Кастомные функции генерации ключей через CacheConfig
@@ -295,6 +297,52 @@ class Controller:
         except (KeyError, ValueError, TypeError):
             # Если не можем определить время - считаем истекшим
             return True
+
+    async def invalidate_cache(
+        self,
+        cache_drop_config: "CacheDropConfig",
+        request: Request,
+        routes_info: tp.List["RouteInfo"],
+        storage: BaseStorage,
+    ) -> None:
+        """Инвалидирует кеш по конфигурации.
+
+        TODO: Комментарии по доработкам:
+
+        1. Необходимо добавить поддержку паттернов в storage для массовой инвалидации
+           по префиксу/маске ключа (особенно для Redis/Memcached)
+
+        2. Желательно добавить bulk операции для удаления множества ключей
+           за один запрос к хранилищу
+
+        3. Можно добавить отложенную/асинхронную инвалидацию через очередь
+           для больших наборов данных
+
+        4. Стоит добавить стратегии инвалидации:
+           - Немедленная (текущая реализация)
+           - Отложенная (через TTL)
+           - Частичная (только определенные поля)
+
+        5. Добавить поддержку тегов для группировки связанных кешей
+           и их совместной инвалидации
+        """
+        invalidation_paths = cache_drop_config.paths
+        if not invalidation_paths:
+            return
+
+        try:
+
+            # Собираем все роуты, которые подпадают под паттерны инвалидации
+            for path in invalidation_paths:
+                for route_info in routes_info:
+                    if route_info.path.startswith(path):
+                        logger.debug(f"Инвалидируем кеш для пути: {route_info.path}")
+                        await storage.remove(path)
+
+            logger.info(f"Успешно инвалидирован кеш для путей: {invalidation_paths}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при инвалидации кеша: {e}")
 
     def _check_conditional_headers(
         self,

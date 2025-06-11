@@ -28,6 +28,9 @@ class BaseStorage:
     async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
         raise NotImplementedError()
 
+    async def remove(self, path: str) -> None:
+        raise NotImplementedError()
+
     async def close(self) -> None:
         raise NotImplementedError()
 
@@ -49,7 +52,7 @@ class InMemoryStorage(BaseStorage):
         ttl: tp.Optional[tp.Union[int, float]] = None,
     ) -> None:
         super().__init__(serializer=serializer, ttl=ttl)
-        self._storage: tp.Dict[str, tp.Union[str, bytes]] = {}
+        self._storage: tp.Dict[str, StoredResponse] = {}
 
     async def store(
         self, key: str, response: Response, request: Request, metadata: Metadata
@@ -62,8 +65,7 @@ class InMemoryStorage(BaseStorage):
             request: Исходный HTTP запрос
             metadata: Метаданные кэша
         """
-        serialized = self._serializer.dumps(response, request, metadata)
-        self._storage[key] = serialized
+        self._storage[key] = response, request, metadata
 
     async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
         """Получает ответ из кэша.
@@ -77,8 +79,19 @@ class InMemoryStorage(BaseStorage):
         if key not in self._storage:
             return None
 
-        serialized = self._storage[key]
-        return self._serializer.loads(serialized)
+        return self._storage[key]
+
+    async def remove(self, path: str) -> None:
+        """Удаляет ответ из кэша по пути в запросе."""
+        # Находим все ключи, соответствующие пути
+        keys_to_remove = []
+        for key, (_, request, _) in self._storage.items():
+            if request.url.path.startswith(path):
+                keys_to_remove.append(key)
+
+        # Удаляем найденные ключи
+        for key in keys_to_remove:
+            del self._storage[key]
 
     async def close(self) -> None:
         """Очищает хранилище."""

@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import logging
 import time
 import typing as tp
 
@@ -145,17 +146,20 @@ async def delete_user(user_id: int) -> UserResponse:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+
     print("🚀 Запуск FastCacheMiddleware Basic Example...")
     print("\n📋 Доступные endpoints:")
     print("   GET /                    - корневой роут (без кеша)")
     print("   GET /fast               - короткий кеш (30s)")
     print("   GET /slow               - длинный кеш (5m)")
-    print("   GET /users/{user_id}    - кастомный ключ кеша")
-    print("   GET /data/{item_id}     - длинный кеш (5m)")
-    print("   POST /users/{user_id}   - обновление с инвалидацией")
-    print("   DELETE /users/{user_id} - удаление с инвалидацией")
-    print("   GET /stats              - без кеша")
-    print("   GET /test/cache-headers - тест заголовков")
+    print("   GET /users/{user_id}    - получение пользователя (кеш 3 мин)")
+    print("   GET /users              - список пользователей (кеш 3 мин)")
+    print("   POST /users/{user_id}   - создание пользователя (инвалидация /users)")
+    print(
+        "   PUT /users/{user_id}    - обновление пользователя (инвалидация /users и /users/*)"
+    )
+    print("   DELETE /users/{user_id} - удаление пользователя (инвалидация /users)")
 
     print("\n🔧 Как работает middleware:")
     print("   1. При старте анализирует все роуты")
@@ -164,8 +168,14 @@ if __name__ == "__main__":
     print("   4. Применяет кеширование согласно конфигурации")
 
     print("\n💡 Для тестирования:")
-    print("   curl http://localhost:8000/fast")
-    print("   curl -H 'user-id: 123' http://localhost:8000/users/1")
-    print("   curl -X POST http://localhost:8000/users/1 -d '{}'")
+    print("   curl http://localhost:8000/users/1")
+    print("   curl http://localhost:8000/users")
+    print(
+        '   curl -X POST http://localhost:8000/users/1 -H "Content-Type: application/json" -d \'{"name": "John", "email": "john@example.com"}\''
+    )
+    print(
+        '   curl -X PUT http://localhost:8000/users/1 -H "Content-Type: application/json" -d \'{"name": "John Updated", "email": "john@example.com"}\''
+    )
+    print("   curl -X DELETE http://localhost:8000/users/1")
 
     uvicorn.run(app, host="127.0.0.1", port=8000)
