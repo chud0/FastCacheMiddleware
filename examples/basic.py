@@ -7,11 +7,12 @@
 4. Инвалидация кеша при модифицирующих запросах
 """
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fast_cache_middleware import FastCacheMiddleware, CacheConfig, CacheDropConfig
 import time
 import uvicorn
-
+import typing as tp
+from starlette.responses import JSONResponse
 
 # Создаем FastAPI приложение
 app = FastAPI(title="FastCacheMiddleware Basic Example")
@@ -31,15 +32,10 @@ def long_cache() -> CacheConfig:
     return CacheConfig(max_age=300)
 
 
-def custom_key_cache() -> CacheConfig:
-    """Кеширование с кастомной функцией ключа."""
-
-    def custom_key_func(request):
-        # Ключ включает user-id из заголовков если есть
-        user_id = request.headers.get("user-id", "anonymous")
-        return f"{request.url.path}:user:{user_id}"
-
-    return CacheConfig(max_age=60, key_func=custom_key_func)
+def custom_key_func(request: Request) -> str:
+    # Ключ включает user-id из заголовков если есть
+    user_id = request.headers.get("user-id", "anonymous")
+    return f"{request.url.path}:user:{user_id}"
 
 
 def invalidate_users_cache() -> CacheDropConfig:
@@ -51,13 +47,13 @@ def invalidate_users_cache() -> CacheDropConfig:
 
 
 @app.get("/")
-async def root():
+async def root() -> tp.Dict[str, tp.Union[str, float]]:
     """Корневой роут без кеширования."""
     return {"message": "FastCacheMiddleware Basic Example", "timestamp": time.time()}
 
 
 @app.get("/fast", dependencies=[CacheConfig(max_age=30)])
-async def fast_endpoint():
+async def fast_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     """Быстрый endpoint с коротким кешированием (30 секунд).
 
     Middleware анализирует dependencies и находит CacheConfig.
@@ -71,7 +67,7 @@ async def fast_endpoint():
 
 
 @app.get("/slow", dependencies=[CacheConfig(max_age=300)])
-async def slow_endpoint():
+async def slow_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     """Медленный endpoint с длинным кешированием (5 минут)."""
     # Имитируем медленное вычисление
     import asyncio
@@ -88,9 +84,9 @@ async def slow_endpoint():
 
 @app.get(
     "/users/{user_id}",
-    dependencies=[CacheConfig(max_age=60, key_func=custom_key_cache)],
+    dependencies=[CacheConfig(max_age=60, key_func=custom_key_func)],
 )
-async def get_user(user_id: int):
+async def get_user(user_id: int) -> tp.Dict[str, tp.Union[str, float]]:
     """Получение пользователя с кастомным ключом кеширования.
 
     Ключ кеша включает user-id из заголовков для персонализации.
@@ -109,7 +105,7 @@ async def get_user(user_id: int):
 
 
 @app.get("/data/{item_id}", dependencies=[CacheConfig(max_age=300)])
-async def get_data(item_id: str):
+async def get_data(item_id: str) -> tp.Dict[str, tp.Union[str, float]]:
     """Получение данных с длинным кешированием."""
     return {
         "item_id": item_id,
@@ -124,7 +120,9 @@ async def get_data(item_id: str):
 @app.post(
     "/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*", "/user/*"])]
 )
-async def update_user(user_id: int, user_data: dict):
+async def update_user(
+    user_id: int, user_data: tp.Dict[str, tp.Any]
+) -> tp.Dict[str, tp.Union[str, float]]:
     """Обновление пользователя с инвалидацией кеша.
 
     Этот POST запрос инвалидирует кеш для всех /users/* путей.
@@ -140,7 +138,7 @@ async def update_user(user_id: int, user_data: dict):
 @app.delete(
     "/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*", "/user/*"])]
 )
-async def delete_user(user_id: int):
+async def delete_user(user_id: int) -> tp.Dict[str, tp.Union[str, float]]:
     """Удаление пользователя с инвалидацией кеша."""
     return {
         "user_id": user_id,
@@ -151,7 +149,7 @@ async def delete_user(user_id: int):
 
 
 @app.get("/stats")
-async def get_stats():
+async def get_stats() -> tp.Dict[str, tp.Union[str, float]]:
     """Статистика (не кешируется)."""
     return {
         "total_requests": "dynamic",
@@ -165,10 +163,8 @@ async def get_stats():
 
 
 @app.get("/test/cache-headers")
-async def test_cache_headers():
+async def test_cache_headers() -> JSONResponse:
     """Тестирование заголовков кеширования."""
-    from starlette.responses import JSONResponse
-
     response = JSONResponse(
         {"message": "Response with cache headers", "timestamp": time.time()}
     )
