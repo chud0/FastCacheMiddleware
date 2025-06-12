@@ -6,11 +6,10 @@
 - Эффективное кеширование и инвалидация на основе роутов
 """
 
-from .middleware import FastCacheMiddleware
 from .controller import Controller
-from .depends import CacheConfig, CacheDropConfig, BaseCacheConfigDepends
+from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
+from .middleware import FastCacheMiddleware
 from .storages import BaseStorage, InMemoryStorage
-from .serializers import BaseSerializer
 
 __version__ = "1.0.0"
 
