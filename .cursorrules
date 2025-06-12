@@ -26,13 +26,6 @@ Follow the following rules
 
 - For any python file, be sure to ALWAYS add typing annotations to each function or class. Be sure to include return types when necessary. Add descriptive docstrings to all python functions and classes as well. Please use pep257 convention. Update existing docstrings if need be.
 - Make sure you keep any comments that exist in a file.
-- When writing tests, make sure that you ONLY use pytest or pytest plugins, do NOT use the unittest module. All tests should have typing annotations as well. All tests should be in ./tests. Be sure to create all necessary files and folders. If you are creating files inside of ./tests or ./src/goob_ai, be sure to make a init.py file if one does not exist.
-- All tests should be fully annotated and should contain docstrings. Be sure to import the following if TYPE_CHECKING:
-  from _pytest.capture import CaptureFixture
-  from _pytest.fixtures import FixtureRequest
-  from _pytest.logging import LogCaptureFixture
-  from _pytest.monkeypatch import MonkeyPatch
-  from pytest_mock.plugin import MockerFixture
 
 When adding or updating logging in Python code, follow these guidelines:
 
@@ -55,7 +48,15 @@ When adding or updating logging in Python code, follow these guidelines:
 
 - Write log messages on English
 
+When adding or updating tests in Python code, follow these guidelines:
 
+- Make sure that you ONLY use pytest or pytest plugins, do NOT use the unittest module.
+
+- Tests should avoid redundancy by not verifying the same functionality multiple times. When functionality is reused, tests should focus only on the specific behavior of the reused component without duplicating checks already covered elsewhere.
+
+- All tests should be in ./tests. 
+
+- All tests should be fully annotated and should contain docstrings.
 
 Key Principles
 
@@ -66,6 +67,13 @@ Key Principles
 - Use lowercase with underscores for directories and files (e.g., routers/user_routes.py).
 - Favor named exports for routes and utility functions.
 - Use the Receive an Object, Return an Object (RORO) pattern.
+
+- Use EAFP (Easier to Ask for Forgiveness than Permission) principle rule
+
+- Order methods in Python classes consistently to improve readability:
+  1. Place public methods first, including `__init__` and other methods forming the class interface.
+  2. Follow with magic methods (`__magic__`), which define special behaviors.
+  3. Put private and protected methods (prefixed with `_` or `__`) last, as they are internal helpers.
 
 Python/FastAPI
 
