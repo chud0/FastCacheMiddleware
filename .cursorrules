@@ -58,6 +58,8 @@ When adding or updating tests in Python code, follow these guidelines:
 
 - All tests should be fully annotated and should contain docstrings.
 
+- Use script for tests run: .\scripts\test.bat
+
 Key Principles
 
 - Write concise, technical responses with accurate Python examples.
