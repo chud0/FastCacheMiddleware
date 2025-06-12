@@ -34,6 +34,28 @@ Follow the following rules
   from _pytest.monkeypatch import MonkeyPatch
   from pytest_mock.plugin import MockerFixture
 
+When adding or updating logging in Python code, follow these guidelines:
+
+- Use logging levels appropriately:
+  - DEBUG: Only for detailed diagnostic information useful during development or troubleshooting. Avoid DEBUG logs in production unless actively investigating an issue.
+  - INFO: For high-level confirmations that the system is working as expected (e.g., startup, shutdown, key milestones). Keep INFO logs concise and relevant.
+  - WARNING: For unexpected situations that do not stop the program but may require attention soon (e.g., low disk space, deprecated API usage).
+  - ERROR: For errors that prevent part of the program from functioning correctly, but the application can still continue.
+  - CRITICAL: For severe errors indicating the program may not be able to continue running.
+
+- Do not log sensitive data or large objects. Summarize complex data structures.
+
+- Avoid logging in tight loops or high-frequency code paths unless absolutely necessary.
+
+- Use clear, concise log messages that include enough context to diagnose issues (e.g., function names, key variable values).
+
+- Regularly review and prune unnecessary or obsolete log statements.
+
+- Always use %s-style formatting for log messages, never use f-strings to format log messages.
+
+- Write log messages on English
+
+
 
 Key Principles
 

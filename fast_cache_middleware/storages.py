@@ -1,3 +1,5 @@
+import logging
+import re
 import typing as tp
 
 from starlette.requests import Request
@@ -5,6 +7,8 @@ from starlette.responses import Response
 from typing_extensions import TypeAlias
 
 from .serializers import BaseSerializer, JSONSerializer, Metadata
+
+logger = logging.getLogger(__name__)
 
 # Определяем тип для хранимого ответа
 StoredResponse: TypeAlias = tp.Tuple[Response, Request, Metadata]
@@ -28,7 +32,7 @@ class BaseStorage:
     async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
         raise NotImplementedError()
 
-    async def remove(self, path: str) -> None:
+    async def remove(self, path: re.Pattern) -> None:
         raise NotImplementedError()
 
     async def close(self) -> None:
@@ -39,7 +43,6 @@ class InMemoryStorage(BaseStorage):
     """Хранилище кэша в памяти.
 
     Реализует простое хранение кэшированных ответов в словаре в памяти процесса.
-    Поддерживает TTL для автоматического удаления устаревших записей.
 
     Args:
         serializer: Сериализатор для преобразования Response/Request в строку/байты
@@ -81,17 +84,23 @@ class InMemoryStorage(BaseStorage):
 
         return self._storage[key]
 
-    async def remove(self, path: str) -> None:
+    async def remove(self, path: re.Pattern) -> None:
         """Удаляет ответ из кэша по пути в запросе."""
         # Находим все ключи, соответствующие пути
         keys_to_remove = []
         for key, (_, request, _) in self._storage.items():
-            if request.url.path.startswith(path):
+            if path.match(request.url.path):
                 keys_to_remove.append(key)
 
         # Удаляем найденные ключи
         for key in keys_to_remove:
             del self._storage[key]
+
+        logger.debug(
+            "Удалено %d записей из кэша по паттерну %s",
+            len(keys_to_remove),
+            path.pattern,
+        )
 
     async def close(self) -> None:
         """Очищает хранилище."""

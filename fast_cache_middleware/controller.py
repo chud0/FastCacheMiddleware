@@ -326,23 +326,9 @@ class Controller:
         5. Добавить поддержку тегов для группировки связанных кешей
            и их совместной инвалидации
         """
-        invalidation_paths = cache_drop_config.paths
-        if not invalidation_paths:
-            return
-
-        try:
-
-            # Собираем все роуты, которые подпадают под паттерны инвалидации
-            for path in invalidation_paths:
-                for route_info in routes_info:
-                    if route_info.path.startswith(path):
-                        logger.debug(f"Инвалидируем кеш для пути: {route_info.path}")
-                        await storage.remove(path)
-
-            logger.info(f"Успешно инвалидирован кеш для путей: {invalidation_paths}")
-
-        except Exception as e:
-            logger.error(f"Ошибка при инвалидации кеша: {e}")
+        for path in cache_drop_config.paths:
+            await storage.remove(path)
+            logger.info("Инвалидирован кеш для паттерна: %s", path.pattern)
 
     def _check_conditional_headers(
         self,

@@ -1,6 +1,7 @@
+import re
 import typing as tp
 
-from fastapi import Depends, params
+from fastapi import params
 from starlette.requests import Request
 
 
@@ -54,8 +55,12 @@ class CacheDropConfig(BaseCacheConfigDepends):
     """Конфигурация инвалидации кеша для маршрута.
 
     Args:
-        paths: Пути для инвалидации кеша
+        paths: Путь для инвалидации кеша. Может быть строкой или регулярным выражением.
+            Если строка, то она будет преобразована в регулярное выражение,
+            которое совпадает с началом пути запроса.
     """
 
-    def __init__(self, paths: tp.List[str]) -> None:
-        self.paths = paths
+    def __init__(self, paths: list[str | re.Pattern]) -> None:
+        self.paths: list[re.Pattern] = [
+            p if isinstance(p, re.Pattern) else re.compile(f"^{p}$") for p in paths
+        ]
