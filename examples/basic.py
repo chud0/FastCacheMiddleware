@@ -102,7 +102,7 @@ async def get_user(user_id: int) -> UserResponse:
     return UserResponse(user_id=user_id, name=user.name, email=user.email)
 
 
-@app.get("/users", dependencies=[CacheConfig(max_age=180)])
+@app.get("/users", dependencies=[CacheConfig(max_age=30)])
 async def get_users() -> tp.List[UserResponse]:
     return [
         UserResponse(user_id=user_id, name=user.name, email=user.email)

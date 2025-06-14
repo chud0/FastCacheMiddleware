@@ -306,6 +306,4 @@ class FastCacheMiddleware:
             request: HTTP запрос
         """
         if cc := route_info.cache_drop_config:
-            await self.controller.invalidate_cache(
-                cc, request, self.routes_info, self.storage
-            )
+            await self.controller.invalidate_cache(cc, storage=self.storage)
