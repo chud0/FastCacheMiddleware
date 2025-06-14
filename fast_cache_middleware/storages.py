@@ -118,10 +118,11 @@ class InMemoryStorage(BaseStorage):
 
         self._storage[key] = (response, request, metadata)
 
-        if self._ttl is not None:
-            self._expiry_times[key] = current_time + self._ttl
+        data_ttl = metadata.get("ttl", self._ttl)
+        if data_ttl is not None:
+            self._expiry_times[key] = current_time + data_ttl
 
-            self._remove_expired_items()
+        self._remove_expired_items()
 
         self._cleanup_lru_items()
 
@@ -193,9 +194,6 @@ class InMemoryStorage(BaseStorage):
 
     def _is_expired(self, key: str) -> bool:
         """Проверяет, истёк ли элемент по TTL."""
-        if self._ttl is None:
-            return False
-
         try:
             return time.time() > self._expiry_times[key]
         except KeyError:
@@ -203,9 +201,6 @@ class InMemoryStorage(BaseStorage):
 
     def _remove_expired_items(self) -> None:
         """Удаляет все истёкшие элементы из кэша."""
-        if self._ttl is None:
-            return
-
         current_time = time.time()
 
         if current_time - self._last_expiry_check_time < self._expiry_check_interval:

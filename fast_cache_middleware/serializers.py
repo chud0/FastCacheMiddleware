@@ -5,7 +5,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 # Определяем типы для метаданных и хранимого ответа
-Metadata: tp.TypeAlias = tp.Dict[str, tp.Any]
+Metadata: tp.TypeAlias = tp.Dict[str, tp.Any]  # todo: make it models
 StoredResponse: tp.TypeAlias = tp.Tuple[Response, Request, Metadata]
 
 

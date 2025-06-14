@@ -68,6 +68,44 @@ def get_routes(router: routing.APIRouter) -> tp.List[routing.BaseRoute]:
     return routes
 
 
+async def build_response_with_callback(
+    app: ASGIApp,
+    scope: Scope,
+    receive: ASGIReceiveCallable,
+    send: ASGISendCallable,
+    on_response_ready: tp.Callable[[Response], tp.Awaitable[None]],
+) -> None:
+    response_holder: tp.Dict[str, tp.Any] = {}
+
+    async def response_builder(message: tp.Dict[str, tp.Any]) -> None:
+        """Wrapper для перехвата и сохранения ответа."""
+        if message["type"] == "http.response.start":
+            response_holder["status"] = message["status"]
+            response_holder["headers"] = [
+                (k.decode(), v.decode()) for k, v in message.get("headers", [])
+            ]
+            response_holder["body"] = b""
+        elif message["type"] == "http.response.body":
+            body = message.get("body", b"")
+            response_holder["body"] += body
+
+            # Если это последний chunk, кешируем ответ
+            if not message.get("more_body", False):
+                response = Response(
+                    content=response_holder["body"],
+                    status_code=response_holder["status"],
+                    headers=dict(response_holder["headers"]),
+                )
+
+                # Вызываем коллбэк с готовым ответом
+                await on_response_ready(response)
+
+        # Передаем событие дальше
+        await send(message)
+
+    await app(scope, receive, response_builder)
+
+
 class FastCacheMiddleware:
     """Middleware для кеширования ответов в ASGI приложениях.
 
@@ -193,43 +231,23 @@ class FastCacheMiddleware:
 
         request = Request(scope, receive)
 
-        # Проверяем, стоит ли искать кеш для этого метода
-        if not self._should_check_cache_for_method(request.method):
-            await self.app(scope, receive, send)
-            return
-
         # Находим соответствующий роут
         route_info = self._find_matching_route(request)
         if not route_info:
             await self.app(scope, receive, send)
             return
 
-        # Обрабатываем кеширование для GET запросов
-        if request.method == "GET" and route_info.cache_config:
+        # Обрабатываем инвалидацию если указано
+        if route_info.cache_drop_config:
+            await self._handle_cache_invalidation(route_info, request)
+
+        # Обрабатываем кеширование если конфиг есть
+        if route_info.cache_config:
             await self._handle_cache_request(route_info, request, scope, receive, send)
             return
 
-        # Обрабатываем инвалидацию для модифицирующих запросов
-        if (
-            request.method in ("POST", "PUT", "DELETE", "PATCH")
-            and route_info.cache_drop_config
-        ):
-            await self._handle_cache_invalidation(route_info, request)
-
         # Выполняем оригинальный запрос
         await self.app(scope, receive, send)
-
-    def _should_check_cache_for_method(self, method: str) -> bool:
-        """Проверяет, стоит ли проверять кеш для данного HTTP метода.
-
-        Args:
-            method: HTTP метод
-
-        Returns:
-            bool: True если метод может использовать кеширование
-        """
-        # Кешируем только GET, инвалидируем для остальных
-        return method in ("GET", "POST", "PUT", "DELETE", "PATCH")
 
     async def _handle_cache_request(
         self,
@@ -248,110 +266,35 @@ class FastCacheMiddleware:
             receive: ASGI receive callable
             send: ASGI send callable
         """
-        try:
-            # Получаем кеш конфигурацию
-            cache_config = route_info.cache_config
-        except Exception as e:
-            logger.warning(f"Ошибка при получении кеш конфигурации: {e}")
+        cache_config = route_info.cache_config
+        if not cache_config:
             await self.app(scope, receive, send)
             return
 
-        try:
-            # Проверяем, нужно ли кешировать этот запрос
-            should_cache = await self.controller.should_cache_request(
-                request, cache_config
-            )
-            if not should_cache:
-                await self.app(scope, receive, send)
-                return
-
-            # Генерируем ключ кеша
-            if hasattr(cache_config, "key_func") and cache_config.key_func:
-                cache_key = cache_config.key_func(request)
-            else:
-                cache_key = await self.controller.generate_cache_key(request)
-
-            # Проверяем кеш
-            cached_response = await self.controller.get_cached_response(
-                cache_key, request, self.storage
-            )
-
-            if cached_response is not None:
-                logger.debug(f"Возвращаем кешированный ответ для ключа: {cache_key}")
-                await cached_response(scope, receive, send)
-                return
-        except Exception as e:
-            logger.warning(f"Ошибка при обработке кеширования: {e}")
-            # При ошибке выполняем запрос без кеширования
+        if not await self.controller.is_cachable_request(request):
             await self.app(scope, receive, send)
+            return
+
+        cache_key = await self.controller.generate_cache_key(request, cache_config)
+
+        cached_response = await self.controller.get_cached_response(
+            cache_key, self.storage
+        )
+        if cached_response is not None:
+            logger.debug("Возвращаем кешированный ответ для ключа: %s", cache_key)
+            await cached_response(scope, receive, send)  # todo: check if it's correct
+            return
 
         # Кеш не найден - выполняем запрос и кешируем результат
-        await self._execute_and_cache_request(
-            cache_config, cache_key, request, scope, receive, send
+        await build_response_with_callback(
+            self.app,
+            scope,
+            receive,
+            send,
+            lambda response: self.controller.cache_response(
+                cache_key, request, response, self.storage, cache_config.max_age
+            ),
         )
-
-    async def _execute_and_cache_request(
-        self,
-        cache_config: CacheConfig,
-        cache_key: str,
-        request: Request,
-        scope: Scope,
-        receive: ASGIReceiveCallable,
-        send: ASGISendCallable,
-    ) -> None:
-        """Выполняет запрос и кеширует результат.
-
-        Args:
-            cache_config: Конфигурация кеширования
-            cache_key: Ключ кеша
-            request: HTTP запрос
-            scope: ASGI scope
-            receive: ASGI receive callable
-            send: ASGI send callable
-        """
-        response_holder: tp.Dict[str, tp.Any] = {}
-
-        async def send_wrapper(message: tp.Dict[str, tp.Any]) -> None:
-            """Wrapper для перехвата и сохранения ответа."""
-            if message["type"] == "http.response.start":
-                response_holder["status"] = message["status"]
-                response_holder["headers"] = [
-                    (k.decode(), v.decode()) for k, v in message.get("headers", [])
-                ]
-                response_holder["body"] = b""
-            elif message["type"] == "http.response.body":
-                body = message.get("body", b"")
-                response_holder["body"] += body
-
-                # Если это последний chunk, кешируем ответ
-                if not message.get("more_body", False):
-                    response = Response(
-                        content=response_holder["body"],
-                        status_code=response_holder["status"],
-                        headers=dict(response_holder["headers"]),
-                    )
-
-                    # Проверяем, можно ли кешировать ответ
-                    should_cache_response = await self.controller.should_cache_response(
-                        request, response
-                    )
-
-                    if should_cache_response:
-                        # Создаем метаданные с TTL из конфигурации
-                        metadata = {
-                            "cached_at": self.controller._get_current_time_iso(),
-                            "ttl": getattr(
-                                cache_config, "max_age", self.controller.default_ttl
-                            ),
-                        }
-
-                        await self.storage.store(cache_key, response, request, metadata)
-                        logger.debug(f"Сохранили ответ в кеш с ключом: {cache_key}")
-
-            await send(message)
-
-        # Выполняем оригинальный запрос
-        await self.app(scope, receive, send_wrapper)
 
     async def _handle_cache_invalidation(
         self, route_info: RouteInfo, request: Request
