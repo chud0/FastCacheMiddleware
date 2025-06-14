@@ -136,6 +136,8 @@ class FastCacheMiddleware:
         self.storage = storage or InMemoryStorage()
         self.controller = controller or Controller()
 
+        self._routes_info: list[RouteInfo] = []
+
     def _extract_routes_info(self, routes: list[routing.APIRoute]) -> list[RouteInfo]:
         """Рекурсивно извлекает информацию о роутах и их dependencies.
 
@@ -214,20 +216,21 @@ class FastCacheMiddleware:
             await self.app(scope, receive, send)
             return
 
-        app_routes = get_app_routes(scope["app"])
-        routes_info = self._extract_routes_info(app_routes)
+        if not self._routes_info:
+            app_routes = get_app_routes(scope["app"])
+            self._routes_info = self._extract_routes_info(app_routes)
 
         request = Request(scope, receive)
 
         # Находим соответствующий роут
-        route_info = self._find_matching_route(request, routes_info)
+        route_info = self._find_matching_route(request, self._routes_info)
         if not route_info:
             await self.app(scope, receive, send)
             return
 
         # Обрабатываем инвалидацию если указано
-        if route_info.cache_drop_config:
-            await self._handle_cache_invalidation(route_info, request)
+        if cc := route_info.cache_drop_config:
+            await self.controller.invalidate_cache(cc, storage=self.storage)
 
         # Обрабатываем кеширование если конфиг есть
         if route_info.cache_config:
@@ -283,15 +286,3 @@ class FastCacheMiddleware:
                 cache_key, request, response, self.storage, cache_config.max_age
             ),
         )
-
-    async def _handle_cache_invalidation(
-        self, route_info: RouteInfo, request: Request
-    ) -> None:
-        """Обрабатывает инвалидацию кеша.
-
-        Args:
-            route_info: Информация о роуте
-            request: HTTP запрос
-        """
-        if cc := route_info.cache_drop_config:
-            await self.controller.invalidate_cache(cc, storage=self.storage)
