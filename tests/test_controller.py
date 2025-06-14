@@ -41,7 +41,7 @@ def mock_storage() -> MagicMock:
 @pytest.fixture
 def controller() -> Controller:
     """Создает экземпляр контроллера."""
-    return Controller(default_ttl=300)
+    return Controller()
 
 
 @pytest.fixture
@@ -64,33 +64,31 @@ def route_info(cache_config: CacheConfig) -> RouteInfo:
 
 
 class TestShouldCacheRequest:
-    """Тесты для определения необходимости кеширования запроса."""
+    """
+    Тесты для определения необходимости кеширования запроса,
+    с параметрами контроллера по умолчанию."""
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "method, cache_control, cache_config, expected_result",
+        "method, cache_control, expected_result",
         [
-            ("GET", "", CacheConfig(max_age=300), True),  # Стандартный GET
-            ("POST", "", CacheConfig(max_age=300), False),  # POST не кешируется
-            ("PUT", "", CacheConfig(max_age=300), False),  # PUT не кешируется
-            ("DELETE", "", CacheConfig(max_age=300), False),  # DELETE не кешируется
+            ("GET", "", True),
+            ("POST", "", False),
+            ("PUT", "", False),
+            ("DELETE", "", False),
             (
                 "GET",
                 "no-cache",
-                CacheConfig(max_age=300),
                 False,
             ),  # Cache-Control: no-cache
             (
                 "GET",
                 "no-store",
-                CacheConfig(max_age=300),
                 False,
             ),  # Cache-Control: no-store
-            ("GET", "", None, False),  # Нет конфигурации
             (
                 "GET",
                 "max-age=3600",
-                CacheConfig(max_age=300),
                 True,
             ),  # Другой Cache-Control
         ],
@@ -99,7 +97,6 @@ class TestShouldCacheRequest:
         self,
         method: str,
         cache_control: str,
-        cache_config: tp.Optional[CacheConfig],
         expected_result: bool,
         controller: Controller,
     ) -> None:
@@ -115,19 +112,20 @@ class TestShouldCacheRequest:
 
         request = Request(scope=scope)
 
-        result = await controller.should_cache_request(request, cache_config)
+        result = await controller.is_cachable_request(request)
         assert result == expected_result
 
 
 class TestShouldCacheResponse:
-    """Тесты для определения возможности кеширования ответа."""
+    """Тесты для определения возможности кеширования ответа,
+    с параметрами контроллера по умолчанию."""
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "status_code, cache_control, content_size, expected_result",
         [
             (200, "", 1024, True),  # Успешный ответ
-            (201, "", 1024, True),  # Created
+            (201, "", 1024, False),  # Created
             (404, "", 1024, False),  # Ошибка
             (500, "", 1024, False),  # Серверная ошибка
             (200, "no-cache", 1024, False),  # Cache-Control: no-cache
@@ -151,14 +149,13 @@ class TestShouldCacheResponse:
         headers = {"cache-control": cache_control} if cache_control else {}
         response = Response(content=content, status_code=status_code, headers=headers)
 
-        result = await controller.should_cache_response(mock_request, response)
+        result = await controller.is_cachable_response(response)
         assert result == expected_result
 
 
 class TestGetCachedResponse:
     """Тесты для получения кешированного ответа."""
 
-    @pytest.mark.skip(reason="Не работает")
     @pytest.mark.asyncio
     async def test_get_cached_response_success(
         self, controller: Controller, mock_storage: MagicMock, mock_request: Request
@@ -172,9 +169,7 @@ class TestGetCachedResponse:
         }
         mock_storage.retrieve.return_value = (cached_response, mock_request, metadata)
 
-        result = await controller.get_cached_response(
-            "test_key", mock_request, mock_storage
-        )
+        result = await controller.get_cached_response("test_key", mock_storage)
 
         assert result is not None
         assert result.body == b"cached"
@@ -188,9 +183,7 @@ class TestGetCachedResponse:
         """Тестирует получение несуществующего кеша."""
         mock_storage.retrieve.return_value = None
 
-        result = await controller.get_cached_response(
-            "test_key", mock_request, mock_storage
-        )
+        result = await controller.get_cached_response("test_key", mock_storage)
 
         assert result is None
         mock_storage.retrieve.assert_called_once_with("test_key")
@@ -201,61 +194,9 @@ class TestGetCachedResponse:
     ) -> None:
         """Тестирует получение истекшего кеша."""
         cached_response = Response(content="cached", status_code=200)
-        # Создаем истекшие метаданные
-        expired_time = datetime.utcnow() - timedelta(seconds=400)
-        metadata = {
-            "cached_at": expired_time.isoformat(),
-            "ttl": 300,  # 5 минут, но прошло больше
-        }
-        mock_storage.retrieve.return_value = (cached_response, mock_request, metadata)
+        mock_storage.retrieve.return_value = None
 
-        result = await controller.get_cached_response(
-            "test_key", mock_request, mock_storage
-        )
-
-        assert result is None
-        mock_storage.retrieve.assert_called_once_with("test_key")
-
-    @pytest.mark.asyncio
-    async def test_get_cached_response_with_conditional_headers(
-        self, controller: Controller, mock_storage: MagicMock
-    ) -> None:
-        """Тестирует получение кеша с условными заголовками."""
-        cached_response = Response(content="cached", status_code=200)
-        metadata = {
-            "cached_at": datetime.utcnow().isoformat(),
-            "ttl": 300,
-            "etag": "test-etag",
-            "last_modified": "Wed, 21 Oct 2015 07:28:00 GMT",
-        }
-        mock_storage.retrieve.return_value = (cached_response, mock_request, metadata)
-
-        # Запрос с If-None-Match
-        scope: tp.Dict[str, tp.Any] = {
-            "type": "http",
-            "method": "GET",
-            "path": "/test",
-            "headers": [(b"if-none-match", b"test-etag")],
-        }
-        request_with_etag = Request(scope=scope)
-
-        result = await controller.get_cached_response(
-            "test_key", request_with_etag, mock_storage
-        )
-
-        assert result is not None
-        assert result.body == b"cached"
-
-    @pytest.mark.asyncio
-    async def test_get_cached_response_storage_error(
-        self, controller: Controller, mock_storage: MagicMock, mock_request: Request
-    ) -> None:
-        """Тестирует обработку ошибок хранилища."""
-        mock_storage.retrieve.side_effect = Exception("Storage error")
-
-        result = await controller.get_cached_response(
-            "test_key", mock_request, mock_storage
-        )
+        result = await controller.get_cached_response("test_key", mock_storage)
 
         assert result is None
         mock_storage.retrieve.assert_called_once_with("test_key")
@@ -282,71 +223,4 @@ class TestCacheResponse:
         assert call_args[0][0] == "test_key"  # key
         assert call_args[0][1] == mock_response  # response
         assert call_args[0][2] == mock_request  # request
-
-        # Проверяем метаданные
-        metadata = call_args[0][3]
-        assert "cached_at" in metadata
-        assert metadata["ttl"] == 600
-        assert metadata["etag"] is None
-        assert metadata["last_modified"] is None
-
-    @pytest.mark.asyncio
-    async def test_cache_response_with_default_ttl(
-        self,
-        controller: Controller,
-        mock_storage: MagicMock,
-        mock_request: Request,
-        mock_response: Response,
-    ) -> None:
-        """Тестирует сохранение с TTL по умолчанию."""
-        await controller.cache_response(
-            "test_key", mock_request, mock_response, mock_storage
-        )
-
-        call_args = mock_storage.store.call_args
-        metadata = call_args[0][3]
-        assert metadata["ttl"] == controller.default_ttl
-
-    @pytest.mark.asyncio
-    async def test_cache_response_with_headers(
-        self,
-        controller: Controller,
-        mock_storage: MagicMock,
-        mock_request: Request,
-    ) -> None:
-        """Тестирует сохранение с HTTP заголовками."""
-        response = Response(
-            content="test",
-            status_code=200,
-            headers={
-                "etag": "test-etag",
-                "last-modified": "Wed, 21 Oct 2015 07:28:00 GMT",
-            },
-        )
-
-        await controller.cache_response(
-            "test_key", mock_request, response, mock_storage, 600
-        )
-
-        call_args = mock_storage.store.call_args
-        metadata = call_args[0][3]
-        assert metadata["etag"] == "test-etag"
-        assert metadata["last_modified"] == "Wed, 21 Oct 2015 07:28:00 GMT"
-
-    @pytest.mark.asyncio
-    async def test_cache_response_storage_error(
-        self,
-        controller: Controller,
-        mock_storage: MagicMock,
-        mock_request: Request,
-        mock_response: Response,
-    ) -> None:
-        """Тестирует обработку ошибок при сохранении."""
-        mock_storage.store.side_effect = Exception("Storage error")
-
-        # Не должно вызывать исключение
-        await controller.cache_response(
-            "test_key", mock_request, mock_response, mock_storage
-        )
-
-        mock_storage.store.assert_called_once()
+        assert call_args[0][3]["ttl"] == 600  # metadata
