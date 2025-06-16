@@ -4,6 +4,10 @@ Route resolution approach:
 - Route analysis at application startup
 - Cache configuration extraction from FastAPI dependencies
 - Efficient caching and invalidation based on routes
+
+
+TODO:
+ - add check for dependencies for middleware exists. and raise error if not.
 """
 
 from .controller import Controller
