@@ -64,7 +64,9 @@ async def root() -> tp.Dict[str, tp.Union[str, float]]:
     }
 
 
-@app.get("/fast", dependencies=[CacheConfig(max_age=30)])
+@app.get(
+    "/fast", dependencies=[CacheConfig(max_age=30)], openapi_extra={"x-cache-age": 30}
+)
 async def fast_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     """Быстрый endpoint с коротким кешированием (30 секунд)."""
     return {
@@ -74,7 +76,9 @@ async def fast_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     }
 
 
-@app.get("/slow", dependencies=[CacheConfig(max_age=300)])
+@app.get(
+    "/slow", dependencies=[CacheConfig(max_age=300)], openapi_extra={"x-cache-age": 300}
+)
 async def slow_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     """Медленный endpoint с длинным кешированием (5 минут)."""
     await asyncio.sleep(0.5)

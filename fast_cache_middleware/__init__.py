@@ -8,6 +8,7 @@ Route resolution approach:
 
 TODO:
  - add check for dependencies for middleware exists. and raise error if not.
+ - automatically add x-cache-age to the OpenAPI schema (openapi_extra) based on caching dependency.
 """
 
 from .controller import Controller
