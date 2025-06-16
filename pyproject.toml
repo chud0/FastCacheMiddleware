@@ -10,6 +10,7 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.111.1"
+cachetools = "^6.1.0"
 
 
 [tool.poetry.group.dev.dependencies]

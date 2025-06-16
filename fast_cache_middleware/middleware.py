@@ -2,11 +2,12 @@ import copy
 import inspect
 import logging
 import typing as tp
+import cachetools
 
 from fastapi import FastAPI, routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Mount, Route
+from starlette.routing import Mount, get_route_path
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .controller import Controller
@@ -198,6 +199,10 @@ class FastCacheMiddleware:
 
         return cache_config, cache_drop_config
 
+    @cachetools.cached(
+        cache=cachetools.LRUCache(maxsize=10**3),
+        key=lambda _, request, __: get_route_path(request.scope),
+    )
     def _find_matching_route(
         self, request: Request, routes_info: list[RouteInfo]
     ) -> tp.Optional[RouteInfo]:
@@ -214,7 +219,7 @@ class FastCacheMiddleware:
             if match_mode == routing.Match.FULL:
                 return route_info
 
-        return None
+        return
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
