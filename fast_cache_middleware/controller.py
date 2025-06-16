@@ -172,7 +172,10 @@ class Controller:
             ttl: Время жизни кеша в секундах
         todo: в meta можно писать etag и last_modified из хедеров ответа
         """
-        await storage.store(cache_key, response, request, {"ttl": ttl})
+        if await self.is_cachable_response(response):
+            await storage.store(cache_key, response, request, {"ttl": ttl})
+        else:
+            logger.debug("Skip caching for response: %s", response.status_code)
 
     async def get_cached_response(
         self, cache_key: str, storage: BaseStorage
