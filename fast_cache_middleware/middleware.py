@@ -67,12 +67,12 @@ def get_routes(router: routing.APIRouter) -> list[routing.APIRoute]:
     return routes
 
 
-async def build_response_with_callback(
+async def send_with_callbacks(
     app: ASGIApp,
     scope: Scope,
     receive: Receive,
     send: Send,
-    on_response_ready: tp.Callable[[Response], tp.Awaitable[None]],
+    on_response_ready: tp.Callable[[Response], tp.Awaitable[None]] | None = None,
 ) -> None:
     response_holder: tp.Dict[str, tp.Any] = {}
 
@@ -80,9 +80,14 @@ async def build_response_with_callback(
         """Wrapper for intercepting and saving response."""
         if message["type"] == "http.response.start":
             response_holder["status"] = message["status"]
+
+            message.get("headers", []).append(
+                ("X-Cache-Status".encode(), "MISS".encode())
+            )
             response_holder["headers"] = [
                 (k.decode(), v.decode()) for k, v in message.get("headers", [])
             ]
+
             response_holder["body"] = b""
         elif message["type"] == "http.response.body":
             body = message.get("body", b"")
@@ -97,7 +102,8 @@ async def build_response_with_callback(
                 )
 
                 # Call callback with ready response
-                await on_response_ready(response)
+                if on_response_ready:
+                    await on_response_ready(response)
 
         # Pass event further
         await send(message)
@@ -146,7 +152,6 @@ class FastCacheMiddleware:
         """
         routes_info = []
         for route in routes:
-
             (
                 cache_config,
                 cache_drop_config,
@@ -277,7 +282,7 @@ class FastCacheMiddleware:
             return
 
         # Cache not found - execute request and cache result
-        await build_response_with_callback(
+        await send_with_callbacks(
             self.app,
             scope,
             receive,

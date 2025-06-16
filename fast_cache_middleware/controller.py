@@ -173,6 +173,7 @@ class Controller:
         todo: in meta can write etag and last_modified from response headers
         """
         if await self.is_cachable_response(response):
+            response.headers["X-Cache-Status"] = "HIT"
             await storage.store(cache_key, response, request, {"ttl": ttl})
         else:
             logger.debug("Skip caching for response: %s", response.status_code)
