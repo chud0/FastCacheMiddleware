@@ -1,9 +1,9 @@
-"""FastCacheMiddleware - высокопроизводительный ASGI middleware для кеширования.
+"""FastCacheMiddleware - high-performance ASGI middleware for caching.
 
-Подход с резолюцией роутов:
-- Анализ роутов на старте приложения
-- Извлечение кеш конфигураций из FastAPI dependencies
-- Эффективное кеширование и инвалидация на основе роутов
+Route resolution approach:
+- Route analysis at application startup
+- Cache configuration extraction from FastAPI dependencies
+- Efficient caching and invalidation based on routes
 """
 
 from .controller import Controller
@@ -14,17 +14,17 @@ from .storages import BaseStorage, InMemoryStorage
 __version__ = "1.0.0"
 
 __all__ = [
-    # Основные компоненты
+    # Main components
     "FastCacheMiddleware",
     "Controller",
-    # Конфигурация через dependencies
+    # Configuration via dependencies
     "CacheConfig",
     "CacheDropConfig",
     "BaseCacheConfigDepends",
-    # Хранилища
+    # Storages
     "BaseStorage",
     "InMemoryStorage",
-    # Сериализация
+    # Serialization
     "BaseSerializer",
     "DefaultSerializer",
 ]

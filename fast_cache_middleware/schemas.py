@@ -6,7 +6,7 @@ from .depends import BaseCacheConfigDepends
 
 
 class RouteInfo:
-    """Информация о роуте с кеш конфигурацией."""
+    """Route information with cache configuration."""
 
     def __init__(
         self,

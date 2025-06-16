@@ -6,21 +6,21 @@ from starlette.requests import Request
 
 
 class BaseCacheConfigDepends(params.Depends):
-    """Базовый класс для конфигурации кеширования через ASGI scope extensions.
+    """Base class for cache configuration via ASGI scope extensions.
 
-    Использует стандартизированный ASGI механизм extensions для передачи
-    конфигурации от route dependencies к middleware.
+    Uses standardized ASGI extensions mechanism for passing
+    configuration from route dependencies to middleware.
     """
 
     use_cache: bool = True
 
     def __call__(self, request: Request) -> None:
-        """Сохраняет конфигурацию в ASGI scope extensions.
+        """Saves configuration in ASGI scope extensions.
 
         Args:
-            request: HTTP запрос
+            request: HTTP request
         """
-        # Используем стандартный ASGI extensions механизм
+        # Use standard ASGI extensions mechanism
         if "extensions" not in request.scope:
             request.scope["extensions"] = {}
 
@@ -35,11 +35,11 @@ class BaseCacheConfigDepends(params.Depends):
 
 
 class CacheConfig(BaseCacheConfigDepends):
-    """Конфигурация кеширования для маршрута.
+    """Cache configuration for route.
 
     Args:
-        max_age: Время жизни кеша в секундах
-        key_func: Функция генерации ключа кеша
+        max_age: Cache lifetime in seconds
+        key_func: Cache key generation function
     """
 
     def __init__(
@@ -52,12 +52,12 @@ class CacheConfig(BaseCacheConfigDepends):
 
 
 class CacheDropConfig(BaseCacheConfigDepends):
-    """Конфигурация инвалидации кеша для маршрута.
+    """Cache invalidation configuration for route.
 
     Args:
-        paths: Путь для инвалидации кеша. Может быть строкой или регулярным выражением.
-            Если строка, то она будет преобразована в регулярное выражение,
-            которое совпадает с началом пути запроса.
+        paths: Path for cache invalidation. Can be string or regular expression.
+            If string, it will be converted to regular expression
+            that matches the beginning of request path.
     """
 
     def __init__(self, paths: list[str | re.Pattern]) -> None:

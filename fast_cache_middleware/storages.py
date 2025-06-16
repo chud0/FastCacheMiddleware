@@ -13,17 +13,17 @@ from .serializers import BaseSerializer, JSONSerializer, Metadata
 
 logger = logging.getLogger(__name__)
 
-# Определяем тип для хранимого ответа
+# Define type for stored response
 StoredResponse: TypeAlias = tp.Tuple[Response, Request, Metadata]
 
 
-# Определяем базовый класс для хранилища кэша
+# Define base class for cache storage
 class BaseStorage:
-    """Базовый класс для хранилища кэша.
+    """Base class for cache storage.
 
     Args:
-        serializer: Сериализатор для преобразования Response/Request в строку/байты
-        ttl: Время жизни кэша в секундах. None для бессрочного хранения
+        serializer: Serializer for converting Response/Request to string/bytes
+        ttl: Cache lifetime in seconds. None for permanent storage
     """
 
     def __init__(
@@ -54,17 +54,17 @@ class BaseStorage:
 
 
 class InMemoryStorage(BaseStorage):
-    """Хранилище кэша в памяти с поддержкой TTL и LRU выселения.
+    """In-memory cache storage with TTL and LRU eviction support.
 
-    Реализует оптимизированное хранение кэшированных ответов в памяти с:
-    - LRU (Least Recently Used) выселением элементов при превышении max_size
-    - TTL (Time To Live) с ленивой проверкой при чтении
-    - Батчевой очисткой для лучшей производительности
+    Implements optimized storage of cached responses in memory with:
+    - LRU (Least Recently Used) eviction when max_size is exceeded
+    - TTL (Time To Live) with lazy checking on read
+    - Batch cleanup for better performance
 
     Args:
-        max_size: Максимальное количество записей в кэше
-        serializer: Сериализатор не используется для InMemoryStorage
-        ttl: Время жизни кэша в секундах. None для бессрочного хранения
+        max_size: Maximum number of cache entries
+        serializer: Serializer not used for InMemoryStorage
+        ttl: Cache lifetime in seconds. None for permanent storage
     """
 
     def __init__(
@@ -79,14 +79,14 @@ class InMemoryStorage(BaseStorage):
             raise StorageError("Max size must be positive")
 
         self._max_size = max_size
-        # Размер батча для очистки - по умолчанию 10% от max_size, минимум 1
+        # Cleanup batch size - default 10% of max_size, minimum 1
         self._cleanup_batch_size = max(1, max_size // 10)
-        # Лимит для запуска очистки - на 5% больше max_size
+        # Cleanup threshold - 5% more than max_size
         self._cleanup_threshold = max_size + max(1, max_size // 20)
 
-        # OrderedDict для эффективного LRU
+        # OrderedDict for efficient LRU
         self._storage: OrderedDict[str, StoredResponse] = OrderedDict()
-        # Отдельное хранение времени истечения для быстрой проверки TTL
+        # Separate expiry time storage for fast TTL checking
         self._expiry_times: tp.Dict[str, float] = {}
         self._last_expiry_check_time: float = 0
         self._expiry_check_interval: float = 60
@@ -94,26 +94,26 @@ class InMemoryStorage(BaseStorage):
     async def store(
         self, key: str, response: Response, request: Request, metadata: Metadata
     ) -> None:
-        """Сохраняет ответ в кэш с поддержкой TTL и LRU выселения.
+        """Saves response to cache with TTL and LRU eviction support.
 
-        Если элемент уже существует, он перемещается в конец (most recently used).
-        При превышении лимита размера запускается батчевая очистка старых элементов.
+        If element already exists, it moves to the end (most recently used).
+        When size limit is exceeded, batch cleanup of old elements starts.
 
         Args:
-            key: Ключ для сохранения
-            response: HTTP ответ для кэширования
-            request: Исходный HTTP запрос
-            metadata: Метаданные кэша
+            key: Key for saving
+            response: HTTP response to cache
+            request: Original HTTP request
+            metadata: Cache metadata
         """
         current_time = time.time()
 
-        # Обновляем метаданные
+        # Update metadata
         metadata = metadata.copy()
         metadata["write_time"] = current_time
 
-        # Если элемент уже существует, удаляем его (он будет добавлен в конец)
+        # If element already exists, remove it (it will be added to the end)
         if key in self._storage:
-            logger.info("Элемент %s удалён из кэша - перезапись", key)
+            logger.info("Element %s removed from cache - overwrite", key)
             self._pop_item(key)
 
         self._storage[key] = (response, request, metadata)
@@ -127,24 +127,24 @@ class InMemoryStorage(BaseStorage):
         self._cleanup_lru_items()
 
     async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
-        """Получает ответ из кэша с ленивой проверкой TTL.
+        """Gets response from cache with lazy TTL checking.
 
-        Элемент перемещается в конец для обновления LRU позиции.
-        Истёкшие элементы автоматически удаляются.
+        Element moves to the end to update LRU position.
+        Expired elements are automatically removed.
 
         Args:
-            key: Ключ для поиска
+            key: Key to search
 
         Returns:
-            Кортеж (response, request, metadata) если найден и не истёк, None если не найден или истёк
+            Tuple (response, request, metadata) if found and not expired, None if not found or expired
         """
         if key not in self._storage:
             return None
 
-        # Ленивая проверка TTL
+        # Lazy TTL check
         if self._is_expired(key):
             self._pop_item(key)
-            logger.debug("Элемент %s удалён из кэша - истёк TTL", key)
+            logger.debug("Element %s removed from cache - TTL expired", key)
             return None
 
         self._storage.move_to_end(key)
@@ -152,55 +152,55 @@ class InMemoryStorage(BaseStorage):
         return self._storage[key]
 
     async def remove(self, path: re.Pattern) -> None:
-        """Удаляет ответы из кэша по паттерну пути в запросе.
+        """Removes responses from cache by request path pattern.
 
         Args:
-            path: Регулярное выражение для сопоставления с путями запросов
+            path: Regular expression for matching request paths
         """
-        # Находим все ключи, соответствующие паттерну пути
+        # Find all keys matching path pattern
         keys_to_remove = []
         for key, (_, request, _) in self._storage.items():
             if path.match(request.url.path):
                 keys_to_remove.append(key)
 
-        # Удаляем найденные ключи
+        # Remove found keys
         for key in keys_to_remove:
             self._pop_item(key)
 
         logger.debug(
-            "Удалено %d записей из кэша по паттерну %s",
+            "Removed %d entries from cache by pattern %s",
             len(keys_to_remove),
             path.pattern,
         )
 
     async def close(self) -> None:
-        """Очищает хранилище и освобождает ресурсы."""
+        """Clears storage and frees resources."""
         self._storage.clear()
         self._expiry_times.clear()
-        logger.debug("Хранилище кэша очищено")
+        logger.debug("Cache storage cleared")
 
     def __len__(self) -> int:
-        """Возвращает текущее количество элементов в кэше."""
+        """Returns current number of elements in cache."""
         return len(self._storage)
 
     def _pop_item(self, key: str) -> StoredResponse | None:
-        """Удаляет элемент из хранилища и времени истечения.
+        """Removes element from storage and expiry times.
 
         Args:
-            key: Ключ элемента для удаления
+            key: Element key to remove
         """
         self._expiry_times.pop(key, None)
         return self._storage.pop(key, None)
 
     def _is_expired(self, key: str) -> bool:
-        """Проверяет, истёк ли элемент по TTL."""
+        """Checks if element is expired by TTL."""
         try:
             return time.time() > self._expiry_times[key]
         except KeyError:
             return False
 
     def _remove_expired_items(self) -> None:
-        """Удаляет все истёкшие элементы из кэша."""
+        """Removes all expired elements from cache."""
         current_time = time.time()
 
         if current_time - self._last_expiry_check_time < self._expiry_check_interval:
@@ -219,14 +219,14 @@ class InMemoryStorage(BaseStorage):
         for key in expired_keys:
             self._pop_item(key)
 
-        logger.debug("Удалено %d истёкших элементов из кэша", len(expired_keys))
+        logger.debug("Removed %d expired elements from cache", len(expired_keys))
 
     def _cleanup_lru_items(self) -> None:
-        """Удаляет старые элементы по LRU стратегии при превышении лимита."""
+        """Removes old elements by LRU strategy when limit is exceeded."""
         if len(self._storage) <= self._cleanup_threshold:
             return
 
-        # Удаляем элементы батчами для лучшей производительности
+        # Remove elements in batches for better performance
         items_to_remove = min(
             self._cleanup_batch_size, len(self._storage) - self._max_size
         )
@@ -235,4 +235,4 @@ class InMemoryStorage(BaseStorage):
             key, _ = self._storage.popitem(last=False)  # FIFO
             self._expiry_times.pop(key, None)
 
-        logger.debug("Удалено %d элементов из кэша по LRU стратегии", items_to_remove)
+        logger.debug("Removed %d elements from cache by LRU strategy", items_to_remove)

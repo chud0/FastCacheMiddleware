@@ -15,26 +15,26 @@ KNOWN_HTTP_METHODS = [method.value for method in http.HTTPMethod]
 
 
 def generate_key(request: Request) -> str:
-    """Генерирует быстрый уникальный ключ для кеширования HTTP запроса.
+    """Generates fast unique key for caching HTTP request.
 
     Args:
-        request: Объект запроса Starlette Request.
+        request: Starlette Request object.
 
     Returns:
-        str: Уникальный ключ для кеширования, основанный на методе и пути запроса.
-        Использует быстрый алгоритм хеширования blake2b.
+        str: Unique key for caching, based on request method and path.
+        Uses fast blake2b hashing algorithm.
 
     Note:
-        Не учитывает схему и хост, так как обычно запросы идут на один и тот же хост.
-        Учитывает только метод, путь и query параметры для максимальной производительности.
+        Does not consider scheme and host, as requests usually go to the same host.
+        Only considers method, path and query parameters for maximum performance.
     """
-    # Получаем только необходимые компоненты из scope
+    # Get only necessary components from scope
     scope = request.scope
     url = scope["path"]
     if scope["query_string"]:
         url += f"?{scope['query_string'].decode('ascii')}"
 
-    # Используем быстрый алгоритм blake2b с минимальным размером дайджеста
+    # Use fast blake2b algorithm with minimal digest size
     key = blake2b(digest_size=8)
     key.update(request.method.encode())
     key.update(url.encode())
@@ -43,20 +43,20 @@ def generate_key(request: Request) -> str:
 
 
 class Controller:
-    """Контроллер кеширования для Starlette/FastAPI.
+    """Caching controller for Starlette/FastAPI.
 
-    Зона ответственности:
-    1. Определение правил кеширования запросов и ответов
-    2. Генерация ключей кеша с учетом пользовательских функций
-    3. Управление TTL и валидацией кешированных данных
-    4. Проверка HTTP заголовков кеширования
-    5. Инвалидация кеша по паттернам URL
+    Responsibilities:
+    1. Define rules for caching requests and responses
+    2. Generate cache keys with custom functions
+    3. Manage TTL and validation of cached data
+    4. Check HTTP caching headers
+    5. Invalidate cache by URL patterns
 
-    Поддерживает:
-    - Кастомные функции генерации ключей через CacheConfig
-    - Инвалидацию кеша по URL паттернам через CacheDropConfig
-    - Стандартные HTTP заголовки кеширования (Cache-Control, ETag, Last-Modified)
-    - Настройка времени жизни кеша через max_age в CacheConfig
+    Supports:
+    - Custom key generation functions via CacheConfig
+    - Cache invalidation by URL patterns via CacheDropConfig
+    - Standard HTTP caching headers (Cache-Control, ETag, Last-Modified)
+    - Cache lifetime configuration via max_age in CacheConfig
     """
 
     def __init__(
@@ -82,20 +82,20 @@ class Controller:
         ]
 
     async def is_cachable_request(self, request: Request) -> bool:
-        """Определяет, нужно ли кешировать данный запрос.
+        """Determines if this request should be cached.
 
         Args:
-            request: HTTP запрос
-            cache_config: Конфигурация кеширования
+            request: HTTP request
+            cache_config: Cache configuration
 
         Returns:
-            bool: True если запрос нужно кешировать
+            bool: True if request should be cached
         """
-        # Кешируем только GET запросы по умолчанию
+        # Cache only GET requests by default
         if request.method not in self.cacheable_methods:
             return False
 
-        # Проверяем заголовки Cache-Control
+        # Check Cache-Control headers
         # todo: add parsing cache-control function
         cache_control = request.headers.get("cache-control", "").lower()
         if "no-cache" in cache_control or "no-store" in cache_control:
@@ -104,19 +104,19 @@ class Controller:
         return True
 
     async def is_cachable_response(self, response: Response) -> bool:
-        """Определяет, можно ли кешировать данный ответ.
+        """Determines if this response can be cached.
 
         Args:
-            request: HTTP запрос
-            response: HTTP ответ
+            request: HTTP request
+            response: HTTP response
 
         Returns:
-            bool: True если ответ можно кешировать
+            bool: True if response can be cached
         """
         if response.status_code not in self.cacheable_status_codes:
             return False
 
-        # Проверяем заголовки Cache-Control
+        # Check Cache-Control headers
         cache_control = response.headers.get("cache-control", "").lower()
         if (
             "no-cache" in cache_control
@@ -125,7 +125,7 @@ class Controller:
         ):
             return False
 
-        # Проверяем размер ответа (не кешируем слишком большие ответы)
+        # Check response size (don't cache too large responses)
         if (
             hasattr(response, "body")
             and response.body
@@ -138,20 +138,20 @@ class Controller:
     async def generate_cache_key(
         self, request: Request, cache_config: CacheConfig
     ) -> str:
-        """Генерирует ключ кеша для запроса.
+        """Generates cache key for request.
 
         Args:
-            request: HTTP запрос
-            cache_config: Конфигурация кеширования
+            request: HTTP request
+            cache_config: Cache configuration
 
         Returns:
-            str: Ключ кеша
+            str: Cache key
         """
-        # Используем пользовательскую функцию генерации ключа если есть
+        # Use custom key generation function if available
         if cache_config.key_func:
             return cache_config.key_func(request)
 
-        # Используем стандартную функцию
+        # Use standard function
         return generate_key(request)
 
     async def cache_response(
@@ -162,15 +162,15 @@ class Controller:
         storage: BaseStorage,
         ttl: tp.Optional[int] = None,
     ) -> None:
-        """Сохраняет ответ в кеш.
+        """Saves response to cache.
 
         Args:
-            cache_key: Ключ кеша
-            request: HTTP запрос
-            response: HTTP ответ для кеширования
-            storage: Хранилище кеша
-            ttl: Время жизни кеша в секундах
-        todo: в meta можно писать etag и last_modified из хедеров ответа
+            cache_key: Cache key
+            request: HTTP request
+            response: HTTP response to cache
+            storage: Cache storage
+            ttl: Cache lifetime in seconds
+        todo: in meta can write etag and last_modified from response headers
         """
         if await self.is_cachable_response(response):
             await storage.store(cache_key, response, request, {"ttl": ttl})
@@ -180,14 +180,14 @@ class Controller:
     async def get_cached_response(
         self, cache_key: str, storage: BaseStorage
     ) -> tp.Optional[Response]:
-        """Получает кешированный ответ если он существует и актуален.
+        """Gets cached response if it exists and is valid.
 
         Args:
-            cache_key: Ключ кеша
-            storage: Хранилище кеша
+            cache_key: Cache key
+            storage: Cache storage
 
         Returns:
-            Response или None если кеш неактуален/отсутствует
+            Response or None if cache is invalid/missing
         """
         result = await storage.retrieve(cache_key)
         if result is None:
@@ -200,31 +200,31 @@ class Controller:
         cache_drop_config: CacheDropConfig,
         storage: BaseStorage,
     ) -> None:
-        """Инвалидирует кеш по конфигурации.
+        """Invalidates cache by configuration.
 
         Args:
-            cache_drop_config: Конфигурация инвалидации кеша
-            storage: Хранилище кеша
+            cache_drop_config: Cache invalidation configuration
+            storage: Cache storage
 
-        TODO: Комментарии по доработкам:
+        TODO: Comments on improvements:
 
-        1. Необходимо добавить поддержку паттернов в storage для массовой инвалидации
-           по префиксу/маске ключа (особенно для Redis/Memcached)
+        1. Need to add pattern support in storage for bulk invalidation
+           by key prefix/mask (especially for Redis/Memcached)
 
-        2. Желательно добавить bulk операции для удаления множества ключей
-           за один запрос к хранилищу
+        2. Desirable to add bulk operations for removing multiple keys
+           in one storage request
 
-        3. Можно добавить отложенную/асинхронную инвалидацию через очередь
-           для больших наборов данных
+        3. Can add delayed/asynchronous invalidation via queue
+           for large datasets
 
-        4. Стоит добавить стратегии инвалидации:
-           - Немедленная (текущая реализация)
-           - Отложенная (через TTL)
-           - Частичная (только определенные поля)
+        4. Should add invalidation strategies:
+           - Immediate (current implementation)
+           - Delayed (via TTL)
+           - Partial (only specific fields)
 
-        5. Добавить поддержку тегов для группировки связанных кешей
-           и их совместной инвалидации
+        5. Add tag support for grouping related caches
+           and their joint invalidation
         """
         for path in cache_drop_config.paths:
             await storage.remove(path)
-            logger.info("Инвалидирован кеш для паттерна: %s", path.pattern)
+            logger.info("Invalidated cache for pattern: %s", path.pattern)

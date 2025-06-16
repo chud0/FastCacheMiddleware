@@ -127,7 +127,7 @@ Refer to FastAPI documentation for Data Models, Path Operations, and Middleware 
 Communication
 
     Always answer in Russian
-    All comments in code, documentation, etc. should be in Russian
+    All comments in code, documentation, etc. should be in English
     Git commit messages on English
 
 Always ask the user to confirm running terminal commands separately and do not execute them without explicit permission.

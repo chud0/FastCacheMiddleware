@@ -4,7 +4,7 @@ import typing as tp
 from starlette.requests import Request
 from starlette.responses import Response
 
-# Определяем типы для метаданных и хранимого ответа
+# Define types for metadata and stored response
 Metadata: tp.TypeAlias = tp.Dict[str, tp.Any]  # todo: make it models
 StoredResponse: tp.TypeAlias = tp.Tuple[Response, Request, Metadata]
 
@@ -52,7 +52,7 @@ class JSONSerializer(BaseSerializer):
 
         parsed = json.loads(data)
 
-        # Восстанавливаем Response
+        # Restore Response
         response_data = parsed["response"]
         response = Response(
             content=(
@@ -64,10 +64,10 @@ class JSONSerializer(BaseSerializer):
             headers=dict(response_data["headers"]),
         )
 
-        # Восстанавливаем Request - создаем mock объект для совместимости
+        # Restore Request - create mock object for compatibility
         request_data = parsed["request"]
 
-        # Создаем минимальный scope для Request
+        # Create minimal scope for Request
         from urllib.parse import urlparse
 
         parsed_url = urlparse(request_data["url"])
@@ -79,7 +79,7 @@ class JSONSerializer(BaseSerializer):
             "headers": [[k.encode(), v.encode()] for k, v in request_data["headers"]],
         }
 
-        # Создаем пустую receive функцию
+        # Create empty receive function
         async def receive():
             return {"type": "http.request", "body": b""}
 
