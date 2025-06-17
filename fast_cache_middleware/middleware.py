@@ -112,6 +112,12 @@ async def send_with_callbacks(
     await app(scope, receive, response_builder)
 
 
+def _build_scope_hash_key(scope: Scope) -> str:
+    path = get_route_path(scope)
+    method = scope["method"].upper()
+    return f"{path}/{method}"
+
+
 class FastCacheMiddleware:
     """Middleware for caching responses in ASGI applications.
 
@@ -201,7 +207,7 @@ class FastCacheMiddleware:
 
     @cachetools.cached(
         cache=cachetools.LRUCache(maxsize=10**3),
-        key=lambda _, request, __: get_route_path(request.scope),
+        key=lambda _, request, __: _build_scope_hash_key(request.scope),
     )
     def _find_matching_route(
         self, request: Request, routes_info: list[RouteInfo]
@@ -215,6 +221,8 @@ class FastCacheMiddleware:
             RouteInfo if matching route found, otherwise None
         """
         for route_info in routes_info:
+            if request.method not in route_info.methods:
+                continue
             match_mode, _ = route_info.route.matches(request.scope)
             if match_mode == routing.Match.FULL:
                 return route_info

@@ -62,5 +62,5 @@ class CacheDropConfig(BaseCacheConfigDepends):
 
     def __init__(self, paths: list[str | re.Pattern]) -> None:
         self.paths: list[re.Pattern] = [
-            p if isinstance(p, re.Pattern) else re.compile(f"^{p}$") for p in paths
+            p if isinstance(p, re.Pattern) else re.compile(f"^{p}") for p in paths
         ]

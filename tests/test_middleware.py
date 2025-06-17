@@ -3,7 +3,7 @@
 import time
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
@@ -16,6 +16,10 @@ def app() -> FastAPI:
 
     # Создаем middleware с автоматической инициализацией
     app.add_middleware(FastCacheMiddleware)
+    _storage = {
+        1: "first",
+        2: "second",
+    }
 
     @app.get("/test", dependencies=[CacheConfig(max_age=60)])
     async def test_endpoint():
@@ -25,12 +29,23 @@ def app() -> FastAPI:
     @app.get("/users/{user_id}", dependencies=[CacheConfig(max_age=30)])
     async def get_user(user_id: int):
         """Endpoint для получения пользователя."""
-        return {"user_id": user_id, "name": f"User {user_id}"}
+        try:
+            user_name = _storage[user_id]
+        except KeyError:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"user_id": user_id, "name": user_name}
 
-    @app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/*"])])
+    @app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/"])])
     async def create_user(user_id: int):
         """Endpoint для создания пользователя с инвалидацией кеша."""
-        return {"message": "User created", "user_id": user_id}
+        user_name = str(time.time)
+        _storage[user_id] = user_name
+        return {"user_id": user_id, "name": user_name}
+
+    @app.delete("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/"])])
+    async def create_user(user_id: int):
+        user_name = _storage.pop(user_id)
+        return {"user_id": user_id, "name": user_name}
 
     return app
 
@@ -76,22 +91,15 @@ def test_user_endpoint_caching(client: TestClient) -> None:
 
 def test_cache_invalidation(client: TestClient) -> None:
     """Тестирует инвалидацию кеша."""
-    # Кешируем данные
     response1 = client.get("/users/1")
     assert response1.status_code == 200
-    data1 = response1.json()
 
-    # Инвалидируем кеш
-    response_invalidate = client.post("/users/1")
+    response_invalidate = client.delete("/users/1")
     assert response_invalidate.status_code == 200
 
     # Следующий GET запрос должен выполнить новый запрос (не кешированный)
     response2 = client.get("/users/1")
-    assert response2.status_code == 200
-    data2 = response2.json()
-
-    # Данные должны быть одинаковыми (но это может быть кеш, так как TTL еще не истек)
-    # В реальном тесте нужно было бы дождаться истечения TTL или использовать другой механизм
+    assert response2.status_code == 404
 
 
 def test_different_users_different_cache(client: TestClient) -> None:
