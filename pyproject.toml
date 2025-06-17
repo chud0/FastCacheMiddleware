@@ -9,8 +9,8 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-fastapi = "^0.111.1"
-cachetools = "^6.1.0"
+fastapi = ">=0.111.1,<1.0.0"
+cachetools = ">=5.0.0, <7.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
