@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "fast-cache-middleware"
-version = "0.0.2"
-description = "Интеллектуальное middleware для кеширования ответов FastAPI"
-authors = ["Your Name <your.email@example.com>"]
+version = "0.0.4"
+description = "An intelligent middleware for caching FastAPI responses"
+authors = ["www.chud0@gmail.com"]
 readme = "README.md"
 packages = [{include = "fast_cache_middleware"}]
 license = "MIT"
@@ -10,7 +10,6 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = ">=0.111.1,<1.0.0"
-cachetools = ">=5.0.0, <7.0.0"
 
 
 [tool.poetry.group.dev.dependencies]

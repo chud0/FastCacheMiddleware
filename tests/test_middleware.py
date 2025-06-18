@@ -1,62 +1,105 @@
 """Тесты для оптимизированного FastCacheMiddleware."""
 
 import time
-
+import typing as tp
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.testclient import TestClient
+from http import HTTPMethod
 
 from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
 
 
+async def get_storage_depends(request: Request) -> dict:
+    return request.app.state.storage
+
+
+async def create_user(user_id: int, storage: dict = Depends(get_storage_depends)):
+    user_name = str(time.time)
+    storage[user_id] = user_name
+    return {"user_id": user_id, "name": user_name, "timestamp": time.time()}
+
+
+async def get_user(user_id: int, storage: dict = Depends(get_storage_depends)):
+    try:
+        user_name = storage[user_id]
+    except KeyError:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user_id": user_id, "name": user_name, "timestamp": time.time()}
+
+
+async def delete_user(user_id: int, storage: dict = Depends(get_storage_depends)):
+    user_name = storage.pop(user_id)
+    return {"user_id": user_id, "name": user_name, "timestamp": time.time()}
+
+
+async def get_first_user(storage: dict = Depends(get_storage_depends)):
+    return await get_user(1, storage=storage)
+
+
+async def get_second_user(storage: dict = Depends(get_storage_depends)):
+    return await get_user(2, storage=storage)
+
+
 @pytest.fixture
 def app() -> FastAPI:
-    """Создает FastAPI приложение с оптимизированным middleware."""
-    app = FastAPI()
-
-    # Создаем middleware с автоматической инициализацией
-    app.add_middleware(FastCacheMiddleware)
     _storage = {
         1: "first",
         2: "second",
     }
 
-    @app.get("/users/first", dependencies=[CacheDropConfig(["/users/second"])])
-    async def get_first_user():
-        try:
-            user_name = _storage[1]
-        except KeyError:
-            raise HTTPException(status_code=404, detail="User not found")
-        return {"user_id": 1, "name": user_name, "timestamp": time.time()}
+    app = FastAPI()
+    app.add_middleware(FastCacheMiddleware)
+    app.state.storage = _storage
 
-    @app.get("/users/second", dependencies=[CacheConfig(max_age=5)])
-    async def get_second_user():
-        try:
-            user_name = _storage[2]
-        except KeyError:
-            raise HTTPException(status_code=404, detail="User not found")
-        return {"user_id": 2, "name": user_name, "timestamp": time.time()}
+    app.router.add_api_route(
+        "/users/first",
+        get_first_user,
+        dependencies=[CacheDropConfig(["/users/second"])],
+        methods={HTTPMethod.GET.value},
+    )
+    app.router.add_api_route(
+        "/users/second",
+        get_second_user,
+        dependencies=[CacheConfig(max_age=5)],
+        methods={HTTPMethod.GET.value},
+    )
+    app.router.add_api_route(
+        "/users/{user_id}",
+        get_user,
+        dependencies=[CacheConfig(max_age=10)],
+        methods={HTTPMethod.GET.value},
+    )
+    app.router.add_api_route(
+        "/users/{user_id}",
+        create_user,
+        dependencies=[CacheDropConfig(paths=["/users/"])],
+        methods={HTTPMethod.POST.value},
+    )
+    app.router.add_api_route(
+        "/users/{user_id}",
+        delete_user,
+        dependencies=[CacheDropConfig(paths=["/users/"])],
+        methods={HTTPMethod.DELETE.value},
+    )
 
-    @app.get("/users/{user_id}", dependencies=[CacheConfig(max_age=30)])
-    async def get_user(user_id: int):
-        """Endpoint для получения пользователя."""
-        try:
-            user_name = _storage[user_id]
-        except KeyError:
-            raise HTTPException(status_code=404, detail="User not found")
-        return {"user_id": user_id, "name": user_name, "timestamp": time.time()}
+    second_app = FastAPI()
+    second_app.add_middleware(FastCacheMiddleware)
+    second_app.state.storage = _storage
 
-    @app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/"])])
-    async def create_user(user_id: int):
-        """Endpoint для создания пользователя с инвалидацией кеша."""
-        user_name = str(time.time)
-        _storage[user_id] = user_name
-        return {"user_id": user_id, "name": user_name, "timestamp": time.time()}
-
-    @app.delete("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users/"])])
-    async def create_user(user_id: int):
-        user_name = _storage.pop(user_id)
-        return {"user_id": user_id, "name": user_name, "timestamp": time.time()}
+    second_app.router.add_api_route(
+        "/users/first",
+        get_first_user,
+        dependencies=[CacheDropConfig(["/subapp/users/second"])],
+        methods={HTTPMethod.GET.value},
+    )
+    second_app.router.add_api_route(
+        "/users/second",
+        get_second_user,
+        dependencies=[CacheConfig(max_age=5)],
+        methods={HTTPMethod.GET.value},
+    )
+    app.mount("/subapp", app=second_app)
 
     return app
 
@@ -120,5 +163,21 @@ def test_stay_order_endpoints(client: TestClient) -> None:
     client.get("/users/first")
 
     response2 = client.get("/users/second").json()
+
+    assert response1["timestamp"] != response2["timestamp"]
+
+
+def test_middleware_isolated(client: TestClient) -> None:
+    """
+    test to ensure that middleware operates in isolation:
+     - first request can cache the drop config
+     - third request incorrectly invalidates the cache
+     - response2 will contain cached response
+    """
+    client.get("/users/first")
+
+    response1 = client.get("/subapp/users/second").json()
+    client.get("/subapp/users/first")
+    response2 = client.get("/subapp/users/second").json()
 
     assert response1["timestamp"] != response2["timestamp"]

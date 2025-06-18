@@ -1,13 +1,11 @@
 import copy
-import inspect
 import logging
 import typing as tp
-import cachetools
 
 from fastapi import FastAPI, routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Mount, get_route_path
+from starlette.routing import Mount
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .controller import Controller
@@ -112,12 +110,6 @@ async def send_with_callbacks(
     await app(scope, receive, response_builder)
 
 
-def _build_scope_hash_key(scope: Scope) -> str:
-    path = get_route_path(scope)
-    method = scope["method"].upper()
-    return f"{path}/{method}"
-
-
 class FastCacheMiddleware:
     """Middleware for caching responses in ASGI applications.
 
@@ -205,10 +197,6 @@ class FastCacheMiddleware:
 
         return cache_config, cache_drop_config
 
-    @cachetools.cached(
-        cache=cachetools.LRUCache(maxsize=10**3),
-        key=lambda _, request, __: _build_scope_hash_key(request.scope),
-    )
     def _find_matching_route(
         self, request: Request, routes_info: list[RouteInfo]
     ) -> tp.Optional[RouteInfo]:
