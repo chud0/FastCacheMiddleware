@@ -16,6 +16,41 @@ from .storages import BaseStorage, InMemoryStorage
 logger = logging.getLogger(__name__)
 
 
+class BaseMiddleware:
+
+    def __init__(
+        self,
+        app: ASGIApp,
+    ) -> None:
+        self.app = app
+
+        self.executors_map = {
+            "lifespan": self.on_lifespan,
+            "http": self.on_http,
+        }
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        scope_type = scope["type"]
+        try:
+            is_request_processed = await self.executors_map[scope_type](
+                scope, receive, send
+            )
+        except KeyError:
+            logger.debug("Not supported scope type: %s", scope_type)
+            is_request_processed = False
+
+        if not is_request_processed:
+            await self.app(scope, receive, send)
+
+    async def on_lifespan(
+        self, scope: Scope, receive: Receive, send: Send
+    ) -> bool | None:
+        pass
+
+    async def on_http(self, scope: Scope, receive: Receive, send: Send) -> bool | None:
+        pass
+
+
 def get_app_routes(app: FastAPI) -> tp.List[routing.APIRoute]:
     """Gets all routes from FastAPI application.
 
@@ -110,7 +145,7 @@ async def send_with_callbacks(
     await app(scope, receive, response_builder)
 
 
-class FastCacheMiddleware:
+class FastCacheMiddleware(BaseMiddleware):
     """Middleware for caching responses in ASGI applications.
 
     Route resolution approach:
@@ -137,11 +172,39 @@ class FastCacheMiddleware:
         storage: tp.Optional[BaseStorage] = None,
         controller: tp.Optional[Controller] = None,
     ) -> None:
-        self.app = app
+        super().__init__(app)
+
         self.storage = storage or InMemoryStorage()
         self.controller = controller or Controller()
 
         self._routes_info: list[RouteInfo] = []
+        while app := getattr(self.app, "app", None):
+            if isinstance(app, routing.APIRouter):
+                r = get_routes(app)
+                self._routes_info = self._extract_routes_info(r)
+
+                break
+
+    async def on_lifespan(self, scope: Scope, *_) -> bool | None:
+        app_routes = get_app_routes(scope["app"])
+        self._routes_info = self._extract_routes_info(app_routes)
+
+    async def on_http(self, scope: Scope, receive: Receive, send: Send) -> bool | None:
+        request = Request(scope, receive)
+
+        # Find matching route
+        route_info = self._find_matching_route(request, self._routes_info)
+        if not route_info:
+            return
+
+        # Handle invalidation if specified
+        if cc := route_info.cache_drop_config:
+            await self.controller.invalidate_cache(cc, storage=self.storage)
+
+        # Handle caching if config exists
+        if route_info.cache_config:
+            await self._handle_cache_request(route_info, request, scope, receive, send)
+            return True
 
     def _extract_routes_info(self, routes: list[routing.APIRoute]) -> list[RouteInfo]:
         """Recursively extracts route information and their dependencies.
@@ -216,35 +279,6 @@ class FastCacheMiddleware:
                 return route_info
 
         return
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        if not self._routes_info:
-            app_routes = get_app_routes(scope["app"])
-            self._routes_info = self._extract_routes_info(app_routes)
-
-        request = Request(scope, receive)
-
-        # Find matching route
-        route_info = self._find_matching_route(request, self._routes_info)
-        if not route_info:
-            await self.app(scope, receive, send)
-            return
-
-        # Handle invalidation if specified
-        if cc := route_info.cache_drop_config:
-            await self.controller.invalidate_cache(cc, storage=self.storage)
-
-        # Handle caching if config exists
-        if route_info.cache_config:
-            await self._handle_cache_request(route_info, request, scope, receive, send)
-            return
-
-        # Execute original request
-        await self.app(scope, receive, send)
 
     async def _handle_cache_request(
         self,
