@@ -27,24 +27,7 @@ class BaseSerializer:
 
 class JSONSerializer(BaseSerializer):
     def dumps(self, response: Response, request: Request, metadata: Metadata) -> str:
-        serialized = {
-            "response": {
-                "status_code": response.status_code,
-                "headers": [[k.decode(), v.decode()] for k, v in response.headers.raw],
-                "content": (
-                    response.body.decode("utf-8", errors="ignore")
-                    if response.body
-                    else None
-                ),
-            },
-            "request": {
-                "method": request.method,
-                "url": str(request.url),
-                "headers": [[k.decode(), v.decode()] for k, v in request.headers.raw],
-            },
-            "metadata": metadata,
-        }
-        return json.dumps(serialized)
+        raise NotImplementedError()  # fixme: bad implementation now, maybe async?
 
     def loads(self, data: tp.Union[str, bytes]) -> StoredResponse:
         if isinstance(data, bytes):
