@@ -69,6 +69,7 @@ async def root() -> tp.Dict[str, tp.Union[str, float]]:
 )
 async def fast_endpoint() -> tp.Dict[str, tp.Union[str, float]]:
     """Быстрый endpoint с коротким кешированием (30 секунд)."""
+
     return {
         "message": "Fast cached response",
         "timestamp": time.time(),

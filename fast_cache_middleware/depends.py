@@ -14,30 +14,8 @@ class BaseCacheConfigDepends(params.Depends):
 
     use_cache: bool = True
 
-    def __init__(
-        self,
-        dependency: tp.Callable[..., tp.Any] | None = None,
-        *,
-        use_cache: bool = True,
-    ):
-        super().__init__(dependency, use_cache=use_cache)
-
-        self.dependency = self
-
     def __call__(self, request: Request) -> None:
-        """Saves configuration in ASGI scope extensions.
-
-        Args:
-            request: HTTP request
-        """
-        # Use standard ASGI extensions mechanism
-        if "extensions" not in request.scope:
-            request.scope["extensions"] = {}
-
-        if "fast_cache" not in request.scope["extensions"]:
-            request.scope["extensions"]["fast_cache"] = {}
-
-        request.scope["extensions"]["fast_cache"]["config"] = self
+        pass
 
 
 class CacheConfig(BaseCacheConfigDepends):
@@ -56,6 +34,8 @@ class CacheConfig(BaseCacheConfigDepends):
         self.max_age = max_age
         self.key_func = key_func
 
+        self.dependency = self
+
 
 class CacheDropConfig(BaseCacheConfigDepends):
     """Cache invalidation configuration for route.
@@ -70,3 +50,5 @@ class CacheDropConfig(BaseCacheConfigDepends):
         self.paths: list[re.Pattern] = [
             p if isinstance(p, re.Pattern) else re.compile(f"^{p}") for p in paths
         ]
+
+        self.dependency = self

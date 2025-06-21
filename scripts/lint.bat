@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 set EXIT_CODE=0
 
 echo Running black...
-poetry run black ./fast_cache_middleware ./examples ./tests
+poetry run black ./fast_cache_middleware ./examples ./tests --check --diff
 if %ERRORLEVEL% neq 0 (
     echo Black failed with exit code %ERRORLEVEL%
     set EXIT_CODE=1

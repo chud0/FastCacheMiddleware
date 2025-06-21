@@ -3,7 +3,7 @@
 EXIT_CODE=0
 
 echo "Running black..."
-poetry run black ./fast_cache_middleware ./examples ./tests
+poetry run black ./fast_cache_middleware ./examples ./tests --check --diff
 if [ $? -ne 0 ]; then
     echo "Black failed with exit code $?"
     EXIT_CODE=1
