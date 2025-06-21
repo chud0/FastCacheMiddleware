@@ -80,7 +80,7 @@ class JSONSerializer(BaseSerializer):
         }
 
         # Create empty receive function
-        async def receive():
+        async def receive() -> tp.Dict[str, tp.Any]:
             return {"type": "http.request", "body": b""}
 
         request = Request(scope, receive)

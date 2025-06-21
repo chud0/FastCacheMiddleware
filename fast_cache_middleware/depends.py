@@ -14,6 +14,16 @@ class BaseCacheConfigDepends(params.Depends):
 
     use_cache: bool = True
 
+    def __init__(
+        self,
+        dependency: tp.Callable[..., tp.Any] | None = None,
+        *,
+        use_cache: bool = True,
+    ):
+        super().__init__(dependency, use_cache=use_cache)
+
+        self.dependency = self
+
     def __call__(self, request: Request) -> None:
         """Saves configuration in ASGI scope extensions.
 
@@ -28,10 +38,6 @@ class BaseCacheConfigDepends(params.Depends):
             request.scope["extensions"]["fast_cache"] = {}
 
         request.scope["extensions"]["fast_cache"]["config"] = self
-
-    @property
-    def dependency(self) -> params.Depends:
-        return self
 
 
 class CacheConfig(BaseCacheConfigDepends):

@@ -125,9 +125,7 @@ async def create_user(user_id: int, user_data: User) -> UserResponse:
     return UserResponse(user_id=user_id, name=user_data.name, email=user_data.email)
 
 
-@app.put(
-    "/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])]
-)
+@app.put("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
 async def update_user(user_id: int, user_data: User) -> UserResponse:
     """Обновление пользователя с инвалидацией кеша."""
     user = _USERS_STORAGE.get(user_id)

@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class BaseMiddleware:
-
     def __init__(
         self,
         app: ASGIApp,
@@ -110,7 +109,7 @@ async def send_with_callbacks(
 ) -> None:
     response_holder: tp.Dict[str, tp.Any] = {}
 
-    async def response_builder(message: tp.Dict[str, tp.Any]) -> None:
+    async def response_builder(message: tp.MutableMapping[str, tp.Any]) -> None:
         """Wrapper for intercepting and saving response."""
         if message["type"] == "http.response.start":
             response_holder["status"] = message["status"]
@@ -178,16 +177,18 @@ class FastCacheMiddleware(BaseMiddleware):
         self.controller = controller or Controller()
 
         self._routes_info: list[RouteInfo] = []
-        while app := getattr(self.app, "app", None):
-            if isinstance(app, routing.APIRouter):
-                r = get_routes(app)
-                self._routes_info = self._extract_routes_info(r)
 
+        current_app: tp.Any = app
+        while current_app := getattr(current_app, "app", None):
+            if isinstance(current_app, routing.APIRouter):
+                _routes = get_routes(current_app)
+                self._routes_info = self._extract_routes_info(_routes)
                 break
 
-    async def on_lifespan(self, scope: Scope, *_) -> bool | None:
+    async def on_lifespan(self, scope: Scope, _: Receive, __: Send) -> bool | None:
         app_routes = get_app_routes(scope["app"])
         self._routes_info = self._extract_routes_info(app_routes)
+        return None
 
     async def on_http(self, scope: Scope, receive: Receive, send: Send) -> bool | None:
         request = Request(scope, receive)
@@ -195,16 +196,41 @@ class FastCacheMiddleware(BaseMiddleware):
         # Find matching route
         route_info = self._find_matching_route(request, self._routes_info)
         if not route_info:
-            return
+            return None
 
         # Handle invalidation if specified
         if cc := route_info.cache_drop_config:
             await self.controller.invalidate_cache(cc, storage=self.storage)
 
         # Handle caching if config exists
-        if route_info.cache_config:
-            await self._handle_cache_request(route_info, request, scope, receive, send)
+        cache_config = route_info.cache_config
+        if not cache_config:
+            return None
+
+        if not await self.controller.is_cachable_request(request):
+            return None
+
+        cache_key = await self.controller.generate_cache_key(request, cache_config)
+
+        cached_response = await self.controller.get_cached_response(
+            cache_key, self.storage
+        )
+        if cached_response is not None:
+            logger.debug("Returning cached response for key: %s", cache_key)
+            await cached_response(scope, receive, send)
             return True
+
+        # Cache not found - execute request and cache result
+        await send_with_callbacks(
+            self.app,
+            scope,
+            receive,
+            send,
+            lambda response: self.controller.cache_response(
+                cache_key, request, response, self.storage, cache_config.max_age
+            ),
+        )
+        return True
 
     def _extract_routes_info(self, routes: list[routing.APIRoute]) -> list[RouteInfo]:
         """Recursively extracts route information and their dependencies.
@@ -278,51 +304,4 @@ class FastCacheMiddleware(BaseMiddleware):
             if match_mode == routing.Match.FULL:
                 return route_info
 
-        return
-
-    async def _handle_cache_request(
-        self,
-        route_info: RouteInfo,
-        request: Request,
-        scope: Scope,
-        receive: Receive,
-        send: Send,
-    ) -> None:
-        """Handles request with caching.
-
-        Args:
-            route_info: Route information
-            request: HTTP request
-            scope: ASGI scope
-            receive: ASGI receive callable
-            send: ASGI send callable
-        """
-        cache_config = route_info.cache_config
-        if not cache_config:
-            await self.app(scope, receive, send)
-            return
-
-        if not await self.controller.is_cachable_request(request):
-            await self.app(scope, receive, send)
-            return
-
-        cache_key = await self.controller.generate_cache_key(request, cache_config)
-
-        cached_response = await self.controller.get_cached_response(
-            cache_key, self.storage
-        )
-        if cached_response is not None:
-            logger.debug("Returning cached response for key: %s", cache_key)
-            await cached_response(scope, receive, send)
-            return
-
-        # Cache not found - execute request and cache result
-        await send_with_callbacks(
-            self.app,
-            scope,
-            receive,
-            send,
-            lambda response: self.controller.cache_response(
-                cache_key, request, response, self.storage, cache_config.max_age
-            ),
-        )
+        return None

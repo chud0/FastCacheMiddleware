@@ -2,7 +2,7 @@ import typing as tp
 
 from starlette.routing import Route
 
-from .depends import BaseCacheConfigDepends
+from .depends import CacheConfig, CacheDropConfig
 
 
 class RouteInfo:
@@ -11,8 +11,8 @@ class RouteInfo:
     def __init__(
         self,
         route: Route,
-        cache_config: tp.Optional[BaseCacheConfigDepends] = None,
-        cache_drop_config: tp.Optional[BaseCacheConfigDepends] = None,
+        cache_config: CacheConfig | None = None,
+        cache_drop_config: CacheDropConfig | None = None,
     ):
         self.route = route
         self.cache_config = cache_config

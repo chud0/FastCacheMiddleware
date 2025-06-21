@@ -2,15 +2,16 @@
 
 import time
 import typing as tp
-import pytest
-from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.testclient import TestClient
 from http import HTTPMethod
+
+import pytest
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.testclient import TestClient
 
 from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
 
 
-async def get_storage_depends(request: Request) -> dict:
+async def get_storage_depends(request: Request) -> tp.Any:
     return request.app.state.storage
 
 
