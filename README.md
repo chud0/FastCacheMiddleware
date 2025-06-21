@@ -1,188 +1,178 @@
 # FastCacheMiddleware
 
-🚀 **Высокопроизводительный ASGI middleware для кеширования с резолюцией роутов**
+🚀 **High-performance ASGI middleware for caching with route resolution approach**
 
-## ✨ Основные особенности
+## ✨ Key Features
 
-FastCacheMiddleware использует **подход с резолюцией роутов** - анализирует роуты приложения на старте и извлекает кеш конфигурации из FastAPI dependencies.
+FastCacheMiddleware uses a **route resolution approach** - it analyzes application routes at startup and extracts cache configurations from FastAPI dependencies.
 
-### 🔧 Как это работает
+### 🔧 How it works
 
-1. **При старте приложения:**
-   - Middleware анализирует все роуты и их dependencies
-   - Извлекает `CacheConfig` и `CacheDropConfig` из dependencies
-   - Создает внутренний индекс роутов с конфигурациями кеширования
+1. **At application startup:**
+   - Middleware analyzes all routes and their dependencies
+   - Extracts `CacheConfig` and `CacheDropConfig` from dependencies
+   - Creates internal route index with caching configurations
 
-2. **При обработке запроса:**
-   - Проверяет HTTP метод (кешируем только GET, инвалидируем для POST/PUT/DELETE)
-   - Находит соответствующий роут по пути и методу
-   - Извлекает кеш конфигурацию из предварительно проанализированных dependencies
-   - Выполняет кеширование или инвалидацию согласно конфигурации
+2. **During request processing:**
+   - Checks HTTP method (cache only GET, invalidate for POST/PUT/DELETE)
+   - Finds matching route by path and method
+   - Extracts cache configuration from pre-analyzed dependencies
+   - Performs caching or invalidation according to configuration
 
-### 💡 Преимущества
+### 💡 Benefits
 
-- **⚡ Высокая производительность** - предварительный анализ роутов
-- **🎯 Простая интеграция** - стандартные FastAPI dependencies
-- **🔧 Гибкая настройка** - кастомные функции ключей, TTL на уровне роутов
-- **🛡️ Автоматическая инвалидация** - инвалидация кеша при модифицирующих запросах
-- **📊 Минимальные накладные расходы** - эффективная работа с большим количеством роутов
+- **⚡ High performance** - pre-route analysis
+- **🎯 Easy integration** - standard FastAPI dependencies
+- **🔧 Flexible configuration** - custom key functions, route-level TTL
+- **🛡️ Automatic invalidation** - cache invalidation for modifying requests
+- **📊 Minimal overhead** - efficient handling of large numbers of routes
 
-## 📦 Установка
+## 📦 Installation
 
 ```bash
 pip install fast-cache-middleware
 ```
 
-## 🎯 Быстрый старт
+## 🎯 Quick Start
 
 ```python
-from fastapi import FastAPI, Depends
-from fast_cache_middleware import FastCacheMiddleware, CacheConfig, CacheDropConfig
+import uvicorn
+from fastapi import FastAPI
+
+from fast_cache_middleware import CacheConfig, CacheDropConfig, FastCacheMiddleware
 
 app = FastAPI()
 
-# Добавляем middleware - он автоматически анализирует роуты
+# Add middleware - it will automatically analyze routes
 app.add_middleware(FastCacheMiddleware)
 
-# Функции для создания кеш конфигураций
-def cache_5min() -> CacheConfig:
-    return CacheConfig(max_age=300)  # 5 минут
 
-def cache_with_custom_key() -> CacheConfig:
-    def custom_key_func(request):
-        user_id = request.headers.get("user-id", "anonymous")
-        return f"{request.url.path}:user:{user_id}"
-    
-    return CacheConfig(max_age=60, key_func=custom_key_func)
-
-def invalidate_users() -> CacheDropConfig:
-    return CacheDropConfig(paths=["/users/*", "/api/users/*"])
-
-# Роуты с кешированием
-@app.get("/users/{user_id}", dependencies=[Depends(cache_5min)])
-async def get_user(user_id: int):
-    """Этот endpoint кешируется на 5 минут."""
-    # Имитируем загрузку из БД
+# Routes with caching
+@app.get("/users/{user_id}", dependencies=[CacheConfig(max_age=300)])
+async def get_user(user_id: int) -> dict[str, int | str]:
+    """This endpoint is cached for 5 minutes."""
+    # Simulate database load
     return {"user_id": user_id, "name": f"User {user_id}"}
 
-@app.get("/profile", dependencies=[Depends(cache_with_custom_key)])
-async def get_profile():
-    """Кеширование с персонализированным ключом."""
-    return {"profile": "user profile data"}
 
-# Роуты с инвалидацией кеша
-@app.post("/users/{user_id}", dependencies=[Depends(invalidate_users)])
-async def update_user(user_id: int, data: dict):
-    """POST запрос инвалидирует кеш для всех /users/* путей."""
+# Routes with cache invalidation
+@app.post(
+    "/users/{user_id}",
+    dependencies=[CacheDropConfig(paths=["/users/*", "/api/users/*"])],
+)
+async def update_user(user_id: int) -> dict[str, int | str]:
+    """It will invalidate cache for all /users/* paths."""
     return {"user_id": user_id, "status": "updated"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
 ```
 
-## 🔧 Конфигурация
+## 🔧 Configuration
 
 ### CacheConfig
 
-Настройка кеширования для GET запросов:
+Configure caching for GET requests:
 
 ```python
 from fast_cache_middleware import CacheConfig
 
-# Простое кеширование
-def simple_cache() -> CacheConfig:
-    return CacheConfig(max_age=300)  # 5 минут
+# Simple caching
+CacheConfig(max_age=300)  # 5 minutes
 
-# С кастомной функцией ключа
-def personalized_cache() -> CacheConfig:
-    def key_func(request):
-        user_id = request.headers.get("user-id", "anonymous")
-        path = request.url.path
-        query = str(request.query_params)
-        return f"{path}:{user_id}:{query}"
-    
-    return CacheConfig(
-        max_age=600,  # 10 минут
-        key_func=key_func
-    )
+# With custom key function, for personalized cache
+def key_func(request: Request):
+    user_id = request.headers.get("Authorization", "anonymous")
+    path = request.url.path
+    query = str(request.query_params)
+    return f"{path}:{user_id}:{query}"
 
-@app.get("/api/data", dependencies=[Depends(personalized_cache)])
-async def get_data():
-    return {"data": "personalized response"}
+CacheConfig(max_age=600, key_func=key_func)  # 10 minutes
 ```
 
 ### CacheDropConfig
 
-Настройка инвалидации кеша для модифицирующих запросов:
+Configure cache invalidation for modifying requests:
 
 ```python
-from fast_cache_middleware import CacheDropConfig
+# Paths can be matched by startswith
+CacheDropConfig(
+    paths=[
+        "/users/",  # Will match /users/123, /users/profile, etc.
+        "/api/",    # Will match all API paths
+    ]
+)
 
-def invalidate_multiple_paths() -> CacheDropConfig:
-    return CacheDropConfig(paths=[
-        "/users/*",      # Все пути пользователей
-        "/api/users/*",  # API пользователей
-        "/cache/users/*" # Кеш пользователей
-    ])
+# Paths can be matched by regexp
+CacheDropConfig(
+    paths=[
+        r"^/users/\d+$",  # Will match /users/123, /users/456, etc.
+        r"^/api/.*",      # Will match all API paths
+    ]
+)
 
-@app.post("/users/{user_id}")
-@app.put("/users/{user_id}")
-@app.delete("/users/{user_id}")
-async def modify_user(user_id: int):
-    """Любой из этих запросов инвалидирует кеш."""
-    return {"message": "User modified"}
+# You can mix regexp and simple string matching - use what's more convenient
+CacheDropConfig(
+    paths=[
+        "/users/",        # Simple prefix match
+        r"^/api/\w+/\d+$" # Regexp for specific API endpoints
+    ]
+)
 ```
 
-## 🏗️ Архитектура
+## 🏗️ Architecture
 
-### Компоненты системы
+### System Components
 
 ```
 FastCacheMiddleware
-├── RouteInfo           # Информация о роуте с кеш конфигурацией
-├── Controller          # Логика кеширования и валидации
-├── Storage             # Хранилища (InMemory, Redis, и др.)
-├── Serializers         # Сериализация кешированных данных
-└── Dependencies        # FastAPI dependencies для конфигурации
+├── RouteInfo           # Route information with cache configuration
+├── Controller          # Caching logic and validation
+├── Storage             # Storages (InMemory, Redis, etc.)
+├── Serializers         # Cached data serialization
+└── Dependencies        # FastAPI dependencies for configuration
 ```
 
-### Поток обработки запроса
+### Request Processing Flow
 
 ```mermaid
 graph TD
-    A[HTTP Request] --> B{Анализ роутов выполнен?}
-    B -->|Нет| C[Анализировать роуты приложения]
-    C --> D[Сохранить конфигурации роутов]
-    B -->|Да| E{Метод поддерживает кеширование?}
+    A[HTTP Request] --> B{Route analysis done?}
+    B -->|No| C[Analyze application routes]
+    C --> D[Save route configurations]
+    B -->|Yes| E{Method supports caching?}
     D --> E
-    E -->|Нет| F[Передать в приложение]
-    E -->|Да| G[Найти соответствующий роут]
-    G --> H{Роут найден?}
-    H -->|Нет| F
-    H -->|Да| I{GET запрос + CacheConfig?}
-    I -->|Да| J[Проверить кеш]
-    J --> K{Кеш найден?}
-    K -->|Да| L[Вернуть из кеша]
-    K -->|Нет| M[Выполнить запрос + сохранить в кеш]
-    I -->|Нет| N{POST/PUT/DELETE + CacheDropConfig?}
-    N -->|Да| O[Инвалидировать кеш]
-    N -->|Нет| F
+    E -->|No| F[Pass to application]
+    E -->|Yes| G[Find matching route]
+    G --> H{Route found?}
+    H -->|No| F
+    H -->|Yes| I{GET request + CacheConfig?}
+    I -->|Yes| J[Check cache]
+    J --> K{Cache found?}
+    K -->|Yes| L[Return from cache]
+    K -->|No| M[Execute request + save to cache]
+    I -->|No| N{POST/PUT/DELETE + CacheDropConfig?}
+    N -->|Yes| O[Invalidate cache]
+    N -->|No| F
     O --> F
-    M --> P[Вернуть ответ]
+    M --> P[Return response]
 ```
 
-## 🎛️ Хранилища
+## 🎛️ Storages
 
-### InMemoryStorage (по умолчанию)
+### InMemoryStorage (default)
 
 ```python
 from fast_cache_middleware import FastCacheMiddleware, InMemoryStorage
 
-storage = InMemoryStorage(
-    max_size=1000,           # Максимум записей
-    cleanup_interval=3600    # Очистка каждый час
-)
+storage = InMemoryStorage(max_size=1000)
 app.add_middleware(FastCacheMiddleware, storage=storage)
 ```
 
-### Кастомное хранилище
+InMemoryStorage uses batch cleanup for better performance
+
+### Custom Storage
 
 ```python
 from fast_cache_middleware import BaseStorage
@@ -193,17 +183,17 @@ class RedisStorage(BaseStorage):
         self.redis = redis.from_url(redis_url)
     
     async def store(self, key: str, response, request, metadata):
-        # Реализация сохранения в Redis
+        # Implementation for saving to Redis
         pass
     
     async def retrieve(self, key: str):
-        # Реализация извлечения из Redis
+        # Implementation for retrieving from Redis
         pass
 
 app.add_middleware(FastCacheMiddleware, storage=RedisStorage("redis://localhost"))
 ```
 
-## 🧪 Тестирование
+## 🧪 Testing
 
 ```python
 import pytest
@@ -213,11 +203,11 @@ from examples.basic import app
 @pytest.mark.asyncio
 async def test_caching():
     async with AsyncClient(app=app, base_url="http://test") as client:
-        # Первый запрос - cache miss
+        # First request - cache miss
         response1 = await client.get("/users/1")
         assert response1.status_code == 200
         
-        # Второй запрос - cache hit (должен быть быстрее)
+        # Second request - cache hit (should be faster)
         response2 = await client.get("/users/1")
         assert response2.status_code == 200
         assert response1.json() == response2.json()
@@ -225,45 +215,45 @@ async def test_caching():
 @pytest.mark.asyncio  
 async def test_cache_invalidation():
     async with AsyncClient(app=app, base_url="http://test") as client:
-        # Кешируем данные
+        # Cache data
         await client.get("/users/1")
         
-        # Инвалидируем кеш
+        # Invalidate cache
         await client.post("/users/1", json={})
         
-        # Следующий GET должен выполнить новый запрос
+        # Next GET should execute new request
         response = await client.get("/users/1")
         assert response.status_code == 200
 ```
 
-## 📊 Производительность
+## 📊 Performance
 
-### Бенчмарки
+### Benchmarks
 
-- **Анализ роутов**: ~5ms для 100 роутов при старте
-- **Поиск роута**: ~0.1ms на запрос (O(n) по количеству кешируемых роутов)
-- **Cache hit**: ~1ms на запрос
-- **Cache miss**: время оригинального запроса + ~2ms на сохранение
+- **Route analysis**: ~5ms for 100 routes at startup
+- **Route lookup**: ~0.1ms per request (O(n) by number of cached routes)
+- **Cache hit**: ~1ms per request
+- **Cache miss**: original request time + ~2ms for saving
 
-### Оптимизация
+### Optimization
 
 ```python
-# Для приложений с большим количеством роутов
+# For applications with many routes
 app.add_middleware(
     FastCacheMiddleware,
-    storage=InMemoryStorage(max_size=10000),  # Увеличить размер кеша
-    controller=Controller(default_ttl=3600)   # Увеличить TTL по умолчанию
+    storage=InMemoryStorage(max_size=10000),  # Increase cache size
+    controller=Controller(default_ttl=3600)   # Increase default TTL
 )
 ```
 
-## 🔒 Безопасность
+## 🔒 Security
 
-### Изоляция кеша
+### Cache Isolation
 
 ```python
 def user_specific_cache() -> CacheConfig:
     def secure_key_func(request):
-        # Включаем токен пользователя в ключ
+        # Include user token in key
         token = request.headers.get("authorization", "").split(" ")[-1]
         return f"{request.url.path}:token:{token}"
     
@@ -274,31 +264,31 @@ async def get_private_data():
     return {"sensitive": "data"}
 ```
 
-### Валидация заголовков
+### Header Validation
 
-Middleware автоматически учитывает стандартные HTTP заголовки кеширования:
+Middleware automatically respects standard HTTP caching headers:
 
-- `Cache-Control: no-cache` - пропуск кеша
-- `Cache-Control: no-store` - запрет кеширования
-- `If-None-Match` - проверка ETag
-- `If-Modified-Since` - проверка времени модификации
+- `Cache-Control: no-cache` - skip cache
+- `Cache-Control: no-store` - forbid caching
+- `Cache-Control: private`  - don't cache private responses
 
-## 🛠️ Продвинутое использование
 
-### Кастомный Controller
+## 🛠️ Advanced Usage
+
+### Custom Controller
 
 ```python
 from fast_cache_middleware import Controller
 
 class CustomController(Controller):
-    async def should_cache_request(self, request):
-        # Кастомная логика - не кешируем админские запросы
+    async def is_cachable_request(self, request):
+        # Custom logic - don't cache admin requests
         if request.headers.get("x-admin-request"):
             return False
         return await super().should_cache_request(request)
     
     async def generate_cache_key(self, request):
-        # Добавляем версию API в ключ
+        # Add API version to key
         version = request.headers.get("api-version", "v1")
         base_key = await super().generate_cache_key(request)
         return f"{version}:{base_key}"
@@ -309,46 +299,30 @@ app.add_middleware(
 )
 ```
 
-### Мониторинг
+## 📝 Examples
 
-```python
-@app.get("/admin/cache/stats")
-async def cache_stats():
-    # В production здесь будет реальная статистика из storage
-    return {
-        "total_routes": len(app.routes),
-        "cached_routes": "статистика по кешируемым роутам",
-        "cache_hit_rate": "процент попаданий в кеш",
-        "storage_size": "размер хранилища"
-    }
-```
+More examples in the `examples/` folder:
 
-## 📝 Примеры
+- **quick_start.py** - minimal example showing basic caching and invalidation
+- **basic.py** - basic usage with FastAPI
 
-Больше примеров в папке `examples/`:
-
-- **basic.py** - базовое использование с FastAPI
-- **advanced.py** - продвинутые сценарии
-- **custom_storage.py** - интеграция с Redis/Memcached
-- **monitoring.py** - мониторинг и метрики
-
-## 🤝 Участие в разработке
+## 🤝 Contributing
 
 ```bash
-git clone https://github.com/your-username/fast-cache-middleware
-cd fast-cache-middleware
-pip install -e ".[dev]"
-pytest
+git clone https://github.com/chud0/FastCacheMiddleware
+cd FastCacheMiddleware
+poetry install --with dev
+./scripts/test.sh
 ```
 
-## 📄 Лицензия
+## 📄 License
 
-MIT License - см. [LICENSE](LICENSE)
+MIT License - see [LICENSE](LICENSE)
 
 ---
 
-⭐ **Нравится проект? Поставьте звездочку!**
+⭐ **Like the project? Give it a star!**
 
-🐛 **Нашли баг?** [Создайте issue](https://github.com/your-username/fast-cache-middleware/issues)
+🐛 **Found a bug?** [Create an issue](https://github.com/chud0/FastCacheMiddleware/issues)
 
-💡 **Есть идея?** [Предложите feature](https://github.com/your-username/fast-cache-middleware/discussions)
+💡 **Have an idea?** [Suggest a feature](https://github.com/chud0/FastCacheMiddleware/discussions/categories/ideas)
