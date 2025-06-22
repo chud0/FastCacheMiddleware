@@ -3,6 +3,7 @@ import logging
 import typing as tp
 
 from fastapi import FastAPI, routing
+from fastapi.openapi.utils import get_openapi
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Mount, Match
@@ -229,6 +230,7 @@ class FastCacheMiddleware(BaseMiddleware):
 
     async def on_lifespan(self, scope: Scope, _: Receive, __: Send) -> bool | None:
         app_routes = get_app_routes(scope["app"])
+        self.set_cache_age_at_openapi_schema(scope["app"])
         self._routes_info = self._extract_routes_info(app_routes)
         return None
 
@@ -275,6 +277,37 @@ class FastCacheMiddleware(BaseMiddleware):
             ttl=cache_config.max_age,
         )()
         return True
+
+
+    def set_cache_age_in_openapi_schema(self, app: FastAPI) -> None:
+
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+
+        for route in app.routes:
+            if isinstance(route, routing.APIRoute):
+                path = route.path
+                methods = route.methods
+
+                for dependency in route.dependant.dependencies:
+                    dep = dependency.call
+                    if isinstance(dep, CacheConfig):
+                        max_age = dep.max_age
+
+                        for method in methods:
+                            method = method.lower()
+                            try:
+                                operation = openapi_schema["paths"][path][method]
+                                operation.setdefault("x-cache-age", max_age)
+                            except KeyError:
+                                continue
+
+        app.openapi_schema = openapi_schema
+        return None
 
     def _extract_routes_info(self, routes: list[routing.APIRoute]) -> list[RouteInfo]:
         """Recursively extracts route information and their dependencies.
