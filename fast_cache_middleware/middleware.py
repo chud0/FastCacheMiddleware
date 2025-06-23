@@ -50,6 +50,83 @@ class BaseMiddleware:
         pass
 
 
+class BaseSendWrapper:
+    def __init__(self, app: ASGIApp, scope: Scope, receive: Receive, send: Send):
+        self.app = app
+        self.scope = scope
+        self.receive = receive
+        self.send = send
+
+        self._response_status = 200
+        self._response_headers = None
+        self._response_body = b""
+
+        self.executors_map = {
+            "http.response.start": self.on_response_start,
+            "http.response.body": self.on_response_body,
+        }
+
+    async def __call__(self) -> None:
+        return await self.app(self.scope, self.receive, self._message_processor)
+
+    async def _message_processor(self, message: tp.MutableMapping[str, tp.Any]) -> None:
+        try:
+            executor = self.executors_map[message["type"]]
+        except KeyError:
+            logger.error("Not found executor for %s message type", message["type"])
+        else:
+            await executor(message)
+
+        await self.send(message)
+
+    async def on_response_start(self, message: tp.MutableMapping[str, tp.Any]) -> None:
+        self._response_status = message["status"]
+        self._response_headers = {
+            k.decode(): v.decode() for k, v in message.get("headers", [])
+        }
+
+    async def on_response_body(self, message: tp.MutableMapping[str, tp.Any]) -> None:
+        self._response_body += message.get("body", b"")
+
+        # this is the last chunk
+        if not message.get("more_body", False):
+            response = Response(
+                content=self._response_body,
+                status_code=self._response_status,
+                headers=self._response_headers,
+            )
+            await self.on_response_ready(response)
+
+    async def on_response_ready(response: Response) -> None:
+        pass
+
+
+class CacheSendWrapper(BaseSendWrapper):
+    def __init__(
+        self, controller: Controller, storage, request, cache_key, ttl, *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+
+        self.controller = controller
+        self.storage = storage
+        self.request = request
+        self.cache_key = cache_key
+        self.ttl = ttl
+
+    async def on_response_start(self, message) -> None:
+        message.get("headers", []).append(("X-Cache-Status".encode(), "MISS".encode()))
+        return await super().on_response_start(message)
+
+    async def on_response_ready(self, response):
+        await self.controller.cache_response(
+            cache_key=self.cache_key,
+            request=self.request,
+            response=response,
+            storage=self.storage,
+            ttl=self.ttl,
+        )
+
+
 def get_app_routes(app: FastAPI) -> tp.List[routing.APIRoute]:
     """Gets all routes from FastAPI application.
 
@@ -98,50 +175,6 @@ def get_routes(router: routing.APIRouter) -> list[routing.APIRoute]:
                 routes.extend(get_routes(route.app))
 
     return routes
-
-
-async def send_with_callbacks(
-    app: ASGIApp,
-    scope: Scope,
-    receive: Receive,
-    send: Send,
-    on_response_ready: tp.Callable[[Response], tp.Awaitable[None]] | None = None,
-) -> None:
-    response_holder: tp.Dict[str, tp.Any] = {}
-
-    async def response_builder(message: tp.MutableMapping[str, tp.Any]) -> None:
-        """Wrapper for intercepting and saving response."""
-        if message["type"] == "http.response.start":
-            response_holder["status"] = message["status"]
-
-            message.get("headers", []).append(
-                ("X-Cache-Status".encode(), "MISS".encode())
-            )
-            response_holder["headers"] = [
-                (k.decode(), v.decode()) for k, v in message.get("headers", [])
-            ]
-
-            response_holder["body"] = b""
-        elif message["type"] == "http.response.body":
-            body = message.get("body", b"")
-            response_holder["body"] += body
-
-            # If this is the last chunk, cache the response
-            if not message.get("more_body", False):
-                response = Response(
-                    content=response_holder["body"],
-                    status_code=response_holder["status"],
-                    headers=dict(response_holder["headers"]),
-                )
-
-                # Call callback with ready response
-                if on_response_ready:
-                    await on_response_ready(response)
-
-        # Pass event further
-        await send(message)
-
-    await app(scope, receive, response_builder)
 
 
 class FastCacheMiddleware(BaseMiddleware):
@@ -221,15 +254,17 @@ class FastCacheMiddleware(BaseMiddleware):
             return True
 
         # Cache not found - execute request and cache result
-        await send_with_callbacks(
-            self.app,
-            scope,
-            receive,
-            send,
-            lambda response: self.controller.cache_response(
-                cache_key, request, response, self.storage, cache_config.max_age
-            ),
-        )
+        await CacheSendWrapper(
+            app=self.app,
+            scope=scope,
+            receive=receive,
+            send=send,
+            controller=self.controller,
+            storage=self.storage,
+            request=request,
+            cache_key=cache_key,
+            ttl=cache_config.max_age,
+        )()
         return True
 
     def _extract_routes_info(self, routes: list[routing.APIRoute]) -> list[RouteInfo]:
