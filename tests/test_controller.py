@@ -3,7 +3,7 @@
 import asyncio
 import time
 import typing as tp
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

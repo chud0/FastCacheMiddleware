@@ -8,11 +8,11 @@ from starlette.responses import Response
 from starlette.routing import Mount
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ._helpers import set_cache_age_in_openapi_schema
 from .controller import Controller
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
 from .schemas import RouteInfo
 from .storages import BaseStorage, InMemoryStorage
-from ._helpers import set_cache_age_in_openapi_schema
 
 logger = logging.getLogger(__name__)
 
