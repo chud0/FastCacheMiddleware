@@ -5,7 +5,7 @@ import typing as tp
 from fastapi import FastAPI, routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Mount, Match
+from starlette.routing import Match, Mount
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ._helpers import set_cache_age_in_openapi_schema

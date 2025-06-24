@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 
 set EXIT_CODE=0
 
-echo Запуск тестов...
+echo Run unit-tests...
 poetry run pytest ./tests --cov=fast_cache_middleware --cov-report=term-missing --cov-report=html -v
 if %ERRORLEVEL% neq 0 (
     echo Тесты завершились с ошибкой, код: %ERRORLEVEL%
