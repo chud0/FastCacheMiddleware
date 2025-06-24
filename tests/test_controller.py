@@ -3,7 +3,7 @@
 import asyncio
 import time
 import typing as tp
-from datetime import datetime, timedelta
+from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -163,7 +163,7 @@ class TestGetCachedResponse:
         """Тестирует успешное получение кешированного ответа."""
         cached_response = Response(content="cached", status_code=200)
         metadata = {
-            "cached_at": datetime.utcnow().isoformat(),
+            "cached_at": datetime.now(UTC).isoformat(),
             "ttl": 300,
             "etag": "test-etag",
         }
