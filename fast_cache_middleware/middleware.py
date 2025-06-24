@@ -5,7 +5,7 @@ import typing as tp
 from fastapi import FastAPI, routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Mount
+from starlette.routing import Mount, Match
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .controller import Controller
@@ -57,9 +57,9 @@ class BaseSendWrapper:
         self.receive = receive
         self.send = send
 
-        self._response_status = 200
-        self._response_headers = None
-        self._response_body = b""
+        self._response_status: int = 200
+        self._response_headers: dict[str, str] = dict()
+        self._response_body: bytes = b""
 
         self.executors_map = {
             "http.response.start": self.on_response_start,
@@ -97,15 +97,24 @@ class BaseSendWrapper:
             )
             await self.on_response_ready(response)
 
-    async def on_response_ready(response: Response) -> None:
+    async def on_response_ready(self, response: Response) -> None:
         pass
 
 
 class CacheSendWrapper(BaseSendWrapper):
     def __init__(
-        self, controller: Controller, storage, request, cache_key, ttl, *args, **kwargs
-    ):
-        super().__init__(*args, **kwargs)
+        self,
+        controller: Controller,
+        storage: BaseStorage,
+        request: Request,
+        cache_key: str,
+        ttl: int,
+        app: ASGIApp,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        super().__init__(app, scope, receive, send)
 
         self.controller = controller
         self.storage = storage
@@ -113,11 +122,11 @@ class CacheSendWrapper(BaseSendWrapper):
         self.cache_key = cache_key
         self.ttl = ttl
 
-    async def on_response_start(self, message) -> None:
+    async def on_response_start(self, message: tp.MutableMapping[str, tp.Any]) -> None:
         message.get("headers", []).append(("X-Cache-Status".encode(), "MISS".encode()))
         return await super().on_response_start(message)
 
-    async def on_response_ready(self, response):
+    async def on_response_ready(self, response: Response) -> None:
         await self.controller.cache_response(
             cache_key=self.cache_key,
             request=self.request,
@@ -336,7 +345,7 @@ class FastCacheMiddleware(BaseMiddleware):
             if request.method not in route_info.methods:
                 continue
             match_mode, _ = route_info.route.matches(request.scope)
-            if match_mode == routing.Match.FULL:
+            if match_mode == Match.FULL:
                 return route_info
 
         return None
