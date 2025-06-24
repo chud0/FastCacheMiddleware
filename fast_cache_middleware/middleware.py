@@ -218,6 +218,7 @@ class FastCacheMiddleware(BaseMiddleware):
 
         self.storage = storage or InMemoryStorage()
         self.controller = controller or Controller()
+        self._openapi_initialized = False
 
         self._routes_info: list[RouteInfo] = []
 
@@ -236,6 +237,12 @@ class FastCacheMiddleware(BaseMiddleware):
 
     async def on_http(self, scope: Scope, receive: Receive, send: Send) -> bool | None:
         request = Request(scope, receive)
+
+        if not self._openapi_initialized:
+            fastapi_app = scope["app"]
+            if isinstance(fastapi_app, FastAPI):
+                set_cache_age_in_openapi_schema(fastapi_app)
+                self._openapi_initialized = True
 
         # Find matching route
         route_info = self._find_matching_route(request, self._routes_info)
