@@ -42,6 +42,10 @@ async def get_second_user(storage: dict = Depends(get_storage_depends)):
     return await get_user(2, storage=storage)
 
 
+async def hidden_route():
+    return {"hidden": True}
+
+
 @pytest.fixture
 def app() -> FastAPI:
     _storage = {
@@ -82,6 +86,13 @@ def app() -> FastAPI:
         delete_user,
         dependencies=[CacheDropConfig(paths=["/users/"])],
         methods={HTTPMethod.DELETE.value},
+    )
+    app.router.add_api_route(
+        "/no-docs",
+        hidden_route,
+        include_in_schema=False,
+        dependencies=[CacheConfig(max_age=42)],
+        methods={HTTPMethod.GET.value},
     )
 
     second_app = FastAPI()
@@ -182,3 +193,29 @@ def test_middleware_isolated(client: TestClient) -> None:
     response2 = client.get("/subapp/users/second").json()
 
     assert response1["timestamp"] != response2["timestamp"]
+
+
+def test_set_cache_age_to_openapi_schema(app: FastAPI, client: TestClient) -> None:
+    path = "/users/second"
+    method = "get"
+
+    client.get(path)
+    schema = app.openapi()
+
+    assert path in schema["paths"]
+    assert method in schema["paths"][path]
+
+    operation = schema["paths"][path][method]
+
+    assert "x-cache-age" in operation
+    assert operation["x-cache-age"] == 5
+
+
+def test_openapi_patch_keyerror_handled_gracefully(
+    app: FastAPI, client: TestClient
+) -> None:
+    path = "/no-docs"
+
+    client.get(path)
+    schema = app.openapi()
+    assert path not in schema["paths"]
