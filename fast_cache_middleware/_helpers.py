@@ -1,24 +1,18 @@
 from fastapi import FastAPI, routing
-from fastapi.openapi.utils import get_openapi
 
 from .depends import CacheConfig
 
 
 def set_cache_age_in_openapi_schema(app: FastAPI) -> None:
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
+    openapi_schema = app.openapi()
 
     for route in app.routes:
         if isinstance(route, routing.APIRoute):
             path = route.path
             methods = route.methods
 
-            for dependency in route.dependant.dependencies:
-                dep = dependency.call
+            for dependency in route.dependencies:
+                dep = dependency.dependency
                 if isinstance(dep, CacheConfig):
                     max_age = dep.max_age
 
