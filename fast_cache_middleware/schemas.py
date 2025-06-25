@@ -1,14 +1,21 @@
 import re
 from typing import Any, Callable
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 from starlette.requests import Request
 from starlette.routing import Route
 
 from .depends import CacheConfig, CacheDropConfig
 
 
-class CacheConfigSchema(BaseModel):
+class CacheConfiguration(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     max_age: int | None = Field(
@@ -25,9 +32,15 @@ class CacheConfigSchema(BaseModel):
     )
 
     @model_validator(mode="after")
-    def one_of_field_is_set(self) -> "CacheConfigSchema":
-        if self.max_age is None and self.key_func is None:
-            raise ValueError("At least one of max_age or key_func must be set.")
+    def one_of_field_is_set(self) -> "CacheConfiguration":
+        if (
+            self.max_age is None
+            and self.key_func is None
+            and self.invalidate_paths is None
+        ):
+            raise ValueError(
+                "At least one of max_age, key_func, or invalidate_paths must be set."
+            )
         return self
 
     @field_validator("invalidate_paths")
@@ -46,17 +59,20 @@ class CacheConfigSchema(BaseModel):
         )
 
 
-class RouteInfo:
+class RouteInfo(BaseModel):
     """Route information with cache configuration."""
 
-    def __init__(
-        self,
-        route: Route,
-        cache_config: CacheConfig | None = None,
-        cache_drop_config: CacheDropConfig | None = None,
-    ):
-        self.route = route
-        self.cache_config = cache_config
-        self.cache_drop_config = cache_drop_config
-        self.path: str = getattr(route, "path")
-        self.methods: set[str] = getattr(route, "methods", set())
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+    route: Route
+    cache_config: CacheConfiguration
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def path(self) -> str:
+        return getattr(self.route, "path", "")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def methods(self) -> set[str]:
+        return getattr(self.route, "methods", set())
