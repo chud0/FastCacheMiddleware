@@ -239,10 +239,8 @@ class FastCacheMiddleware(BaseMiddleware):
         request = Request(scope, receive)
 
         if not self._openapi_initialized:
-            fastapi_app = scope["app"]
-            if isinstance(fastapi_app, FastAPI):
-                set_cache_age_in_openapi_schema(fastapi_app)
-                self._openapi_initialized = True
+            set_cache_age_in_openapi_schema(scope["app"])
+            self._openapi_initialized = True
 
         # Find matching route
         route_info = self._find_matching_route(request, self._routes_info)
