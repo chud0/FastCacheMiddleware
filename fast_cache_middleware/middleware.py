@@ -10,7 +10,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .controller import Controller
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
-from .schemas import RouteInfo
+from .schemas import CacheConfiguration, RouteInfo
 from .storages import BaseStorage, InMemoryStorage
 
 logger = logging.getLogger(__name__)
@@ -240,19 +240,23 @@ class FastCacheMiddleware(BaseMiddleware):
         if not route_info:
             return None
 
-        # Handle invalidation if specified
-        if cc := route_info.cache_drop_config:
-            await self.controller.invalidate_cache(cc, storage=self.storage)
+        cache_configuration = route_info.cache_config
 
-        # Handle caching if config exists
-        cache_config = route_info.cache_config
-        if not cache_config:
+        # Handle invalidation if specified
+        if cache_configuration.invalidate_paths:
+            await self.controller.invalidate_cache(
+                cache_configuration.invalidate_paths, storage=self.storage
+            )
+
+        if not cache_configuration.max_age:
             return None
 
         if not await self.controller.is_cachable_request(request):
             return None
 
-        cache_key = await self.controller.generate_cache_key(request, cache_config)
+        cache_key = await self.controller.generate_cache_key(
+            request, cache_configuration=cache_configuration
+        )
 
         cached_response = await self.controller.get_cached_response(
             cache_key, self.storage
@@ -272,7 +276,7 @@ class FastCacheMiddleware(BaseMiddleware):
             storage=self.storage,
             request=request,
             cache_key=cache_key,
-            ttl=cache_config.max_age,
+            ttl=cache_configuration.max_age,
         )()
         return True
 
@@ -290,10 +294,17 @@ class FastCacheMiddleware(BaseMiddleware):
             ) = self._extract_cache_configs_from_route(route)
 
             if cache_config or cache_drop_config:
+                cache_configuration = CacheConfiguration(
+                    max_age=cache_config.max_age if cache_config else None,
+                    key_func=cache_config.key_func if cache_config else None,
+                    invalidate_paths=(
+                        cache_drop_config.paths if cache_drop_config else None
+                    ),
+                )
+
                 route_info = RouteInfo(
                     route=route,
-                    cache_config=cache_config,
-                    cache_drop_config=cache_drop_config,
+                    cache_config=cache_configuration,
                 )
                 routes_info.append(route_info)
 

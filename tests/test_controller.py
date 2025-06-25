@@ -1,18 +1,15 @@
 """Тесты для контроллера кеширования."""
 
-import asyncio
-import time
 import typing as tp
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.controller import Controller, generate_key
-from fast_cache_middleware.depends import CacheConfig, CacheDropConfig
-from fast_cache_middleware.schemas import RouteInfo
+from fast_cache_middleware.controller import Controller
+from fast_cache_middleware.schemas import CacheConfiguration, RouteInfo
 from fast_cache_middleware.storages import BaseStorage
 
 
@@ -45,22 +42,16 @@ def controller() -> Controller:
 
 
 @pytest.fixture
-def cache_config() -> CacheConfig:
+def cache_config() -> CacheConfiguration:
     """Создает конфигурацию кеширования."""
-    return CacheConfig(max_age=600)
+    return CacheConfiguration(max_age=600)
 
 
 @pytest.fixture
-def cache_drop_config() -> CacheDropConfig:
-    """Создает конфигурацию инвалидации кеша."""
-    return CacheDropConfig(paths=["/api/*"])
-
-
-@pytest.fixture
-def route_info(cache_config: CacheConfig) -> RouteInfo:
+def route_info(cache_config: CacheConfiguration) -> RouteInfo:
     """Создает информацию о роуте."""
     route = MagicMock()
-    return RouteInfo(route=route, cache_config=cache_config, cache_drop_config=None)
+    return RouteInfo(route=route, cache_config=cache_config)
 
 
 class TestShouldCacheRequest:
