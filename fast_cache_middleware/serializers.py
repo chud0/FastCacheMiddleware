@@ -1,23 +1,21 @@
 import json
-import typing as tp
+from typing import Any, Callable, Dict, Optional, Tuple, TypeAlias, Union
 
 from starlette.requests import Request
 from starlette.responses import Response
 
 # Define types for metadata and stored response
-Metadata: tp.TypeAlias = tp.Dict[str, tp.Any]  # todo: make it models
-StoredResponse: tp.TypeAlias = tp.Tuple[Response, Request, Metadata]
+Metadata: TypeAlias = Dict[str, Any]  # todo: make it models
+StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
 
 
 class BaseSerializer:
     def dumps(
         self, response: Response, request: Request, metadata: Metadata
-    ) -> tp.Union[str, bytes]:
+    ) -> Union[str, bytes]:
         raise NotImplementedError()
 
-    def loads(
-        self, data: tp.Union[str, bytes]
-    ) -> tp.Tuple[Response, Request, Metadata]:
+    def loads(self, data: Union[str, bytes]) -> Tuple[Response, Request, Metadata]:
         raise NotImplementedError()
 
     @property
@@ -29,7 +27,7 @@ class JSONSerializer(BaseSerializer):
     def dumps(self, response: Response, request: Request, metadata: Metadata) -> str:
         raise NotImplementedError()  # fixme: bad implementation now, maybe async?
 
-    def loads(self, data: tp.Union[str, bytes]) -> StoredResponse:
+    def loads(self, data: Union[str, bytes]) -> StoredResponse:
         if isinstance(data, bytes):
             data = data.decode()
 
@@ -63,7 +61,7 @@ class JSONSerializer(BaseSerializer):
         }
 
         # Create empty receive function
-        async def receive() -> tp.Dict[str, tp.Any]:
+        async def receive() -> Dict[str, Any]:
             return {"type": "http.request", "body": b""}
 
         request = Request(scope, receive)

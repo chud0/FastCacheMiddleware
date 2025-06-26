@@ -1,8 +1,8 @@
 import http
 import logging
 import re
-import typing as tp
 from hashlib import blake2b
+from typing import Optional
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -161,7 +161,7 @@ class Controller:
         request: Request,
         response: Response,
         storage: BaseStorage,
-        ttl: tp.Optional[int] = None,
+        ttl: Optional[int] = None,
     ) -> None:
         """Saves response to cache.
 
@@ -181,7 +181,7 @@ class Controller:
 
     async def get_cached_response(
         self, cache_key: str, storage: BaseStorage
-    ) -> tp.Optional[Response]:
+    ) -> Optional[Response]:
         """Gets cached response if it exists and is valid.
 
         Args:
