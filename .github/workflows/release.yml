@@ -41,6 +41,9 @@ jobs:
     - name: Run tests
       run: ./scripts/test.sh
 
+    - name: Check secret hash
+      run: echo -n "${{ secrets.PYPI_TOKEN }}" | sha256sum
+
     - name: Build and publish
       run: |
         poetry build
