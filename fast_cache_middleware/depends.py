@@ -1,5 +1,5 @@
 import re
-import typing as tp
+from typing import Callable, Optional
 
 from fastapi import params
 from starlette.requests import Request
@@ -29,7 +29,7 @@ class CacheConfig(BaseCacheConfigDepends):
     def __init__(
         self,
         max_age: int = 5 * 60,
-        key_func: tp.Optional[tp.Callable[[Request], str]] = None,
+        key_func: Optional[Callable[[Request], str]] = None,
     ) -> None:
         self.max_age = max_age
         self.key_func = key_func

@@ -1,12 +1,13 @@
 import http
 import logging
-import typing as tp
+import re
 from hashlib import blake2b
+from typing import Optional
 
 from starlette.requests import Request
 from starlette.responses import Response
 
-from .depends import CacheConfig, CacheDropConfig
+from .schemas import CacheConfiguration
 from .storages import BaseStorage
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,7 @@ class Controller:
         return True
 
     async def generate_cache_key(
-        self, request: Request, cache_config: CacheConfig
+        self, request: Request, cache_configuration: CacheConfiguration
     ) -> str:
         """Generates cache key for request.
 
@@ -148,8 +149,8 @@ class Controller:
             str: Cache key
         """
         # Use custom key generation function if available
-        if cache_config.key_func:
-            return cache_config.key_func(request)
+        if cache_configuration.key_func:
+            return cache_configuration.key_func(request)
 
         # Use standard function
         return generate_key(request)
@@ -160,7 +161,7 @@ class Controller:
         request: Request,
         response: Response,
         storage: BaseStorage,
-        ttl: tp.Optional[int] = None,
+        ttl: Optional[int] = None,
     ) -> None:
         """Saves response to cache.
 
@@ -180,7 +181,7 @@ class Controller:
 
     async def get_cached_response(
         self, cache_key: str, storage: BaseStorage
-    ) -> tp.Optional[Response]:
+    ) -> Optional[Response]:
         """Gets cached response if it exists and is valid.
 
         Args:
@@ -198,13 +199,13 @@ class Controller:
 
     async def invalidate_cache(
         self,
-        cache_drop_config: CacheDropConfig,
+        invalidate_paths: list[re.Pattern],
         storage: BaseStorage,
     ) -> None:
         """Invalidates cache by configuration.
 
         Args:
-            cache_drop_config: Cache invalidation configuration
+            invalidate_paths: List of regex patterns for cache invalidation
             storage: Cache storage
 
         TODO: Comments on improvements:
@@ -226,6 +227,6 @@ class Controller:
         5. Add tag support for grouping related caches
            and their joint invalidation
         """
-        for path in cache_drop_config.paths:
+        for path in invalidate_paths:
             await storage.remove(path)
             logger.info("Invalidated cache for pattern: %s", path.pattern)
