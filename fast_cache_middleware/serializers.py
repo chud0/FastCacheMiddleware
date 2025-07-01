@@ -1,5 +1,6 @@
 import json
 import typing as tp
+from urllib.parse import urlparse
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -69,7 +70,6 @@ class JSONSerializer(BaseSerializer):
         request_data = parsed["request"]
 
         # Create minimal scope for Request
-        from urllib.parse import urlparse
 
         parsed_url = urlparse(request_data["url"])
         scope = {
@@ -77,7 +77,9 @@ class JSONSerializer(BaseSerializer):
             "method": request_data["method"],
             "path": parsed_url.path,
             "query_string": parsed_url.query.encode() if parsed_url.query else b"",
-            "headers": [[k.encode(), v.encode()] for k, v in request_data["headers"]],
+            "headers": [
+                [k.encode(), v.encode()] for k, v in request_data["headers"].items()
+            ],
         }
 
         # Create empty receive function
