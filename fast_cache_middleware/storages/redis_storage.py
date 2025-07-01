@@ -3,7 +3,12 @@ import re
 import time
 import typing as tp
 
-from redis import Redis
+try:
+    import redis
+    from redis import Redis
+except ImportError:  # pragma: no cover
+    redis = None  # type: ignore
+
 from starlette.requests import Request
 from starlette.responses import Response
 
