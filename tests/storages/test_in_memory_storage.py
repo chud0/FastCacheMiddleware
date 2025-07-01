@@ -9,9 +9,9 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
+from fast_cache_middleware.exceptions import StorageError
 from fast_cache_middleware.serializers import Metadata
 from fast_cache_middleware.storages import InMemoryStorage
-from fast_cache_middleware.exceptions import StorageError
 
 
 @pytest.mark.parametrize(

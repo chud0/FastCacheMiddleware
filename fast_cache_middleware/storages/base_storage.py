@@ -6,7 +6,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from fast_cache_middleware.exceptions import StorageError
-from fast_cache_middleware.serializers import Metadata, BaseSerializer, JSONSerializer
+from fast_cache_middleware.serializers import BaseSerializer, JSONSerializer, Metadata
 
 StoredResponse: TypeAlias = tp.Tuple[Response, Request, Metadata]
 

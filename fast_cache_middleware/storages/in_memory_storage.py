@@ -9,6 +9,7 @@ from starlette.responses import Response
 
 from fast_cache_middleware.exceptions import StorageError
 from fast_cache_middleware.serializers import BaseSerializer, Metadata
+
 from .base_storage import BaseStorage, StoredResponse
 
 logger = logging.getLogger(__name__)
