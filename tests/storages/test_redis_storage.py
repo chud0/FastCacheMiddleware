@@ -1,4 +1,5 @@
 import re
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -65,7 +66,7 @@ async def test_store_overwrites_existing_key():
 
     request = Request(scope={"type": "http", "method": "GET", "path": "/overwrite"})
     response = Response(content="updated", status_code=200)
-    metadata = {}
+    metadata: dict = {}
 
     storage._serializer.dumps = MagicMock(return_value=b"new_value")
 

@@ -36,9 +36,11 @@ class JSONSerializer(BaseSerializer):
         response_data = {
             "status_code": response.status_code,
             "headers": dict(response.headers),
-            "content": response.body.decode("utf-8", errors="ignore")
-            if response.body
-            else None,
+            "content": (
+                bytes(response.body).decode("utf-8", errors="ignore")
+                if response.body
+                else None
+            ),
         }
         payload = {
             "response": response_data,
