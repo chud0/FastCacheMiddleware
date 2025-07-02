@@ -1,24 +1,21 @@
 import json
-import typing as tp
-from urllib.parse import urlparse
+from typing import Any, Callable, Dict, Optional, Tuple, TypeAlias, Union
 
 from starlette.requests import Request
 from starlette.responses import Response
 
 # Define types for metadata and stored response
-Metadata: tp.TypeAlias = tp.Dict[str, tp.Any]  # todo: make it models
-StoredResponse: tp.TypeAlias = tp.Tuple[Response, Request, Metadata]
+Metadata: TypeAlias = Dict[str, Any]  # todo: make it models
+StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
 
 
 class BaseSerializer:
     def dumps(
         self, response: Response, request: Request, metadata: Metadata
-    ) -> tp.Union[str, bytes]:
+    ) -> Union[str, bytes]:
         raise NotImplementedError()
 
-    def loads(
-        self, data: tp.Union[str, bytes]
-    ) -> tp.Tuple[Response, Request, Metadata]:
+    def loads(self, data: Union[str, bytes]) -> Tuple[Response, Request, Metadata]:
         raise NotImplementedError()
 
     @property
@@ -28,29 +25,9 @@ class BaseSerializer:
 
 class JSONSerializer(BaseSerializer):
     def dumps(self, response: Response, request: Request, metadata: Metadata) -> str:
-        request_data = {
-            "method": request.method,
-            "url": str(request.url),
-            "headers": dict(request.headers),
-        }
-        response_data = {
-            "status_code": response.status_code,
-            "headers": dict(response.headers),
-            "content": (
-                bytes(response.body).decode("utf-8", errors="ignore")
-                if response.body
-                else None
-            ),
-        }
-        payload = {
-            "response": response_data,
-            "request": request_data,
-            "metadata": metadata,
-        }
+        raise NotImplementedError()  # fixme: bad implementation now, maybe async?
 
-        return json.dumps(payload)
-
-    def loads(self, data: tp.Union[str, bytes]) -> StoredResponse:
+    def loads(self, data: Union[str, bytes]) -> StoredResponse:
         if isinstance(data, bytes):
             data = data.decode()
 
@@ -72,6 +49,7 @@ class JSONSerializer(BaseSerializer):
         request_data = parsed["request"]
 
         # Create minimal scope for Request
+        from urllib.parse import urlparse
 
         parsed_url = urlparse(request_data["url"])
         scope = {
@@ -79,13 +57,11 @@ class JSONSerializer(BaseSerializer):
             "method": request_data["method"],
             "path": parsed_url.path,
             "query_string": parsed_url.query.encode() if parsed_url.query else b"",
-            "headers": [
-                [k.encode(), v.encode()] for k, v in request_data["headers"].items()
-            ],
+            "headers": [[k.encode(), v.encode()] for k, v in request_data["headers"]],
         }
 
         # Create empty receive function
-        async def receive() -> tp.Dict[str, tp.Any]:
+        async def receive() -> Dict[str, Any]:
             return {"type": "http.request", "body": b""}
 
         request = Request(scope, receive)

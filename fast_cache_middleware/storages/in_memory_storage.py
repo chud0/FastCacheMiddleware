@@ -1,18 +1,56 @@
 import logging
 import re
 import time
-import typing as tp
 from collections import OrderedDict
+from typing import Any, Dict, Optional, Tuple, Union
 
 from starlette.requests import Request
 from starlette.responses import Response
+from typing_extensions import TypeAlias
 
-from fast_cache_middleware.exceptions import StorageError
-from fast_cache_middleware.serializers import BaseSerializer, Metadata
-
-from .base_storage import BaseStorage, StoredResponse
+from .exceptions import StorageError
+from .serializers import BaseSerializer, JSONSerializer, Metadata
 
 logger = logging.getLogger(__name__)
+
+# Define type for stored response
+StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
+
+
+# Define base class for cache storage
+class BaseStorage:
+    """Base class for cache storage.
+
+    Args:
+        serializer: Serializer for converting Response/Request to string/bytes
+        ttl: Cache lifetime in seconds. None for permanent storage
+    """
+
+    def __init__(
+        self,
+        serializer: Optional[BaseSerializer] = None,
+        ttl: Optional[Union[int, float]] = None,
+    ) -> None:
+        self._serializer = serializer or JSONSerializer()
+
+        if ttl is not None and ttl <= 0:
+            raise StorageError("TTL must be positive")
+
+        self._ttl = ttl
+
+    async def store(
+        self, key: str, response: Response, request: Request, metadata: Metadata
+    ) -> None:
+        raise NotImplementedError()
+
+    async def retrieve(self, key: str) -> Optional[StoredResponse]:
+        raise NotImplementedError()
+
+    async def remove(self, path: re.Pattern) -> None:
+        raise NotImplementedError()
+
+    async def close(self) -> None:
+        raise NotImplementedError()
 
 
 class InMemoryStorage(BaseStorage):
@@ -32,8 +70,8 @@ class InMemoryStorage(BaseStorage):
     def __init__(
         self,
         max_size: int = 1000,
-        serializer: tp.Optional[BaseSerializer] = None,
-        ttl: tp.Optional[tp.Union[int, float]] = None,
+        serializer: Optional[BaseSerializer] = None,
+        ttl: Optional[Union[int, float]] = None,
     ) -> None:
         super().__init__(serializer=serializer, ttl=ttl)
 
@@ -49,7 +87,7 @@ class InMemoryStorage(BaseStorage):
         # OrderedDict for efficient LRU
         self._storage: OrderedDict[str, StoredResponse] = OrderedDict()
         # Separate expiry time storage for fast TTL checking
-        self._expiry_times: tp.Dict[str, float] = {}
+        self._expiry_times: Dict[str, float] = {}
         self._last_expiry_check_time: float = 0
         self._expiry_check_interval: float = 60
 
@@ -88,7 +126,7 @@ class InMemoryStorage(BaseStorage):
 
         self._cleanup_lru_items()
 
-    async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
+    async def retrieve(self, key: str) -> Optional[StoredResponse]:
         """Gets response from cache with lazy TTL checking.
 
         Element moves to the end to update LRU position.
