@@ -36,17 +36,19 @@ async def test_redis_storage_init_validation(ttl, expect_error):
 @pytest.mark.asyncio
 async def test_store_and_retrieve_works():
     mock_redis = AsyncMock()
-    storage = RedisStorage(redis_client=mock_redis, ttl=1)
+
+    mock_serializer = MagicMock()
+    serialized_value = b"serialized"
+    mock_serializer.dumps = AsyncMock(return_value=serialized_value)
+    mock_serializer.loads = MagicMock(
+        return_value=("deserialized_response", "req", {"meta": "data"})
+    )
+
+    storage = RedisStorage(redis_client=mock_redis, ttl=1, serializer=mock_serializer)
 
     request = Request(scope={"type": "http", "method": "GET", "path": "/test"})
     response = Response(content="hello", status_code=200)
-    metadata = {}
-
-    serialized_value = b"serialized"
-    storage._serializer.dumps = MagicMock(return_value=serialized_value)
-    storage._serializer.loads = MagicMock(
-        return_value=("deserialized_response", "req", {"meta": "data"})
-    )
+    metadata: dict[str, str | int] = {}
 
     mock_redis.exists.return_value = False
 
@@ -62,20 +64,23 @@ async def test_store_and_retrieve_works():
 @pytest.mark.asyncio
 async def test_store_overwrites_existing_key():
     mock_redis = AsyncMock()
-    storage = RedisStorage(redis_client=mock_redis, ttl=10)
+
+    mock_serializer = MagicMock()
+    serialized_value = b"serialized"
+    mock_serializer.dumps = AsyncMock(return_value=serialized_value)
+
+    storage = RedisStorage(redis_client=mock_redis, ttl=10, serializer=mock_serializer)
 
     request = Request(scope={"type": "http", "method": "GET", "path": "/overwrite"})
     response = Response(content="updated", status_code=200)
-    metadata: dict = {}
-
-    storage._serializer.dumps = MagicMock(return_value=b"new_value")
+    metadata: dict[str, str] = {}
 
     mock_redis.exists.return_value = True
 
     await storage.store("existing_key", response, request, metadata)
 
     mock_redis.delete.assert_awaited_with("cache:existing_key")
-    mock_redis.set.assert_awaited_with("cache:existing_key", b"new_value", ex=10)
+    mock_redis.set.assert_awaited_with("cache:existing_key", serialized_value, ex=10)
 
 
 @pytest.mark.asyncio
@@ -91,13 +96,18 @@ async def test_retrieve_returns_none_on_missing_key():
 @pytest.mark.asyncio
 async def test_retrieve_returns_none_on_deserialization_error():
     mock_redis = AsyncMock()
-    storage = RedisStorage(redis_client=mock_redis)
-    mock_redis.get.return_value = b"invalid"
 
     def raise_error(_):
         raise ValueError("bad format")
 
-    storage._serializer.loads = raise_error
+    mock_serializer = MagicMock()
+    mock_serializer.loads = raise_error
+
+    mock_serializer.dumps = AsyncMock(return_value=b"serialized")
+
+    storage = RedisStorage(redis_client=mock_redis, serializer=mock_serializer)
+
+    mock_redis.get.return_value = b"invalid"
 
     result = await storage.retrieve("corrupt")
     assert result is None
