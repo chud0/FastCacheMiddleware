@@ -11,7 +11,7 @@ StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
 
 
 class BaseSerializer:
-    def dumps(
+    async def dumps(
         self, response: Response, request: Request, metadata: Metadata
     ) -> Union[str, bytes]:
         raise NotImplementedError()
@@ -25,12 +25,19 @@ class BaseSerializer:
 
 
 class JSONSerializer(BaseSerializer):
-    def dumps(self, response: Response, request: Request, metadata: Metadata) -> str:
+    async def dumps(
+        self, response: Response, request: Request, metadata: Metadata
+    ) -> Union[str, bytes]:
+        body_bytes = await request.body()
         request_data = {
             "method": request.method,
             "url": str(request.url),
             "headers": dict(request.headers),
+            "body": (
+                body_bytes.decode("utf-8", errors="ignore") if body_bytes else None
+            ),
         }
+
         response_data = {
             "status_code": response.status_code,
             "headers": dict(response.headers),
@@ -40,9 +47,10 @@ class JSONSerializer(BaseSerializer):
                 else None
             ),
         }
+
         payload = {
-            "response": response_data,
             "request": request_data,
+            "response": response_data,
             "metadata": metadata,
         }
 

@@ -48,7 +48,7 @@ class RedisStorage(BaseStorage):
 
         metadata["write_time"] = current_time
 
-        value = self._serializer.dumps(response, request, metadata)
+        value = await self._serializer.dumps(response, request, metadata)
         logger.debug("Serialized data: %s", value)
         ttl = metadata.get("ttl", self._ttl)
         logger.debug(f"TTL: %s", ttl)
