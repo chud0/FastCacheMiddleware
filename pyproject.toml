@@ -26,6 +26,7 @@ mypy = "^1.6.1"
 pytest-cov = "^4.1.0"
 httpx = "^0.28.1"
 uvicorn = "^0.34.3"
+types-redis = "^4.6.0.20241004"
 
 [tool.black]
 line-length = 88
@@ -54,6 +55,7 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_optional = true
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
