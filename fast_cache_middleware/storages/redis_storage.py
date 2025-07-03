@@ -1,15 +1,13 @@
 import logging
 import re
 import time
-import typing as tp
+from typing import TYPE_CHECKING, Optional, Union
 
-try:
-    import redis
-
-    Redis = redis.Redis
-except ImportError:  # pragma: no cover
-    redis = None  # type: ignore
-    Redis = None  # type: ignore
+if TYPE_CHECKING:
+    try:
+        from redis import Redis
+    except ImportError:
+        Redis = None  # type: ignore
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -26,8 +24,8 @@ class RedisStorage(BaseStorage):
     def __init__(
         self,
         redis_client: Redis,
-        serializer: tp.Optional[BaseSerializer] = None,
-        ttl: tp.Optional[tp.Union[int, float]] = None,
+        serializer: Optional[BaseSerializer] = None,
+        ttl: Optional[Union[int, float]] = None,
         namespace: str = "cache",
     ) -> None:
         super().__init__(serializer, ttl)
@@ -65,7 +63,7 @@ class RedisStorage(BaseStorage):
         await self._storage.set(full_key, value, ex=ttl)
         logger.info("Data written to Redis")
 
-    async def retrieve(self, key: str) -> tp.Optional[StoredResponse]:
+    async def retrieve(self, key: str) -> Optional[StoredResponse]:
         """
         Get response from Redis. If TTL expired returns None.
         """
