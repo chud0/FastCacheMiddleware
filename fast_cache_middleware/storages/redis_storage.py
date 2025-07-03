@@ -5,9 +5,11 @@ import typing as tp
 
 try:
     import redis
-    from redis import Redis
+
+    Redis = redis.Redis
 except ImportError:  # pragma: no cover
     redis = None  # type: ignore
+    Redis = None  # type: ignore
 
 from starlette.requests import Request
 from starlette.responses import Response
