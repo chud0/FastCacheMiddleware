@@ -14,7 +14,7 @@ import typing as tp
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
-from redis.asyncio import Redis
+from redis.asyncio import Redis  # async only
 
 from fast_cache_middleware import (
     CacheConfig,

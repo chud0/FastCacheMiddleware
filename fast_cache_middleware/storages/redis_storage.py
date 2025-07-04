@@ -1,13 +1,12 @@
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Optional, Union
+from typing import Optional, Union
 
-if TYPE_CHECKING:
-    try:
-        from redis import Redis
-    except ImportError:
-        Redis = None  # type: ignore
+try:
+    from redis.asyncio import Redis
+except ImportError:
+    Redis = None  # type: ignore
 
 from starlette.requests import Request
 from starlette.responses import Response
