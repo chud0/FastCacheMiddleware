@@ -2,55 +2,17 @@ import logging
 import re
 import time
 from collections import OrderedDict
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 from starlette.requests import Request
 from starlette.responses import Response
-from typing_extensions import TypeAlias
 
-from .exceptions import StorageError
-from .serializers import BaseSerializer, JSONSerializer, Metadata
+from fast_cache_middleware.exceptions import StorageError
+from fast_cache_middleware.serializers import BaseSerializer, Metadata
+
+from .base_storage import BaseStorage, StoredResponse
 
 logger = logging.getLogger(__name__)
-
-# Define type for stored response
-StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
-
-
-# Define base class for cache storage
-class BaseStorage:
-    """Base class for cache storage.
-
-    Args:
-        serializer: Serializer for converting Response/Request to string/bytes
-        ttl: Cache lifetime in seconds. None for permanent storage
-    """
-
-    def __init__(
-        self,
-        serializer: Optional[BaseSerializer] = None,
-        ttl: Optional[Union[int, float]] = None,
-    ) -> None:
-        self._serializer = serializer or JSONSerializer()
-
-        if ttl is not None and ttl <= 0:
-            raise StorageError("TTL must be positive")
-
-        self._ttl = ttl
-
-    async def store(
-        self, key: str, response: Response, request: Request, metadata: Metadata
-    ) -> None:
-        raise NotImplementedError()
-
-    async def retrieve(self, key: str) -> Optional[StoredResponse]:
-        raise NotImplementedError()
-
-    async def remove(self, path: re.Pattern) -> None:
-        raise NotImplementedError()
-
-    async def close(self) -> None:
-        raise NotImplementedError()
 
 
 class InMemoryStorage(BaseStorage):
