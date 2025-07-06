@@ -158,26 +158,27 @@ class TestGetCachedResponse:
             "ttl": 300,
             "etag": "test-etag",
         }
-        mock_storage.retrieve.return_value = (cached_response, mock_request, metadata)
+        mock_storage.get.return_value = (cached_response, mock_request, metadata)
 
         result = await controller.get_cached_response("test_key", mock_storage)
+        print(result)
 
         assert result is not None
         assert result.body == b"cached"
         assert result.status_code == 200
-        mock_storage.retrieve.assert_called_once_with("test_key")
+        mock_storage.get.assert_called_once_with("test_key")
 
     @pytest.mark.asyncio
     async def test_get_cached_response_not_found(
         self, controller: Controller, mock_storage: MagicMock, mock_request: Request
     ) -> None:
         """Тестирует получение несуществующего кеша."""
-        mock_storage.retrieve.return_value = None
+        mock_storage.get.return_value = None
 
         result = await controller.get_cached_response("test_key", mock_storage)
 
         assert result is None
-        mock_storage.retrieve.assert_called_once_with("test_key")
+        mock_storage.get.assert_called_once_with("test_key")
 
     @pytest.mark.asyncio
     async def test_get_cached_response_expired(
@@ -185,12 +186,12 @@ class TestGetCachedResponse:
     ) -> None:
         """Тестирует получение истекшего кеша."""
         cached_response = Response(content="cached", status_code=200)
-        mock_storage.retrieve.return_value = None
+        mock_storage.get.return_value = None
 
         result = await controller.get_cached_response("test_key", mock_storage)
 
         assert result is None
-        mock_storage.retrieve.assert_called_once_with("test_key")
+        mock_storage.get.assert_called_once_with("test_key")
 
 
 class TestCacheResponse:
@@ -209,8 +210,8 @@ class TestCacheResponse:
             "test_key", mock_request, mock_response, mock_storage, 600
         )
 
-        mock_storage.store.assert_called_once()
-        call_args = mock_storage.store.call_args
+        mock_storage.set.assert_called_once()
+        call_args = mock_storage.set.call_args
         assert call_args[0][0] == "test_key"  # key
         assert call_args[0][1] == mock_response  # response
         assert call_args[0][2] == mock_request  # request
