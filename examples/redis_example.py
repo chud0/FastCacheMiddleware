@@ -1,5 +1,7 @@
 """An example of using Fast Cache Middleware with rout resolution and Redis storage.
 
+to install using Redis, run this command: pip install fast-cache-middleware[redis]
+
 Demonstrates:
 1. Analysis of routes at the start of the application;
 2. Extracting configuration cache from dependencies;
