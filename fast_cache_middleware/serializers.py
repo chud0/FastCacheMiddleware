@@ -1,5 +1,6 @@
 import json
-from typing import Any, Callable, Dict, Optional, Tuple, TypeAlias, Union
+from typing import Any, Dict, Tuple, TypeAlias, Union
+from urllib.parse import urlparse
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -10,7 +11,7 @@ StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
 
 
 class BaseSerializer:
-    def dumps(
+    async def dumps(
         self, response: Response, request: Request, metadata: Metadata
     ) -> Union[str, bytes]:
         raise NotImplementedError()
@@ -24,8 +25,36 @@ class BaseSerializer:
 
 
 class JSONSerializer(BaseSerializer):
-    def dumps(self, response: Response, request: Request, metadata: Metadata) -> str:
-        raise NotImplementedError()  # fixme: bad implementation now, maybe async?
+    async def dumps(
+        self, response: Response, request: Request, metadata: Metadata
+    ) -> Union[str, bytes]:
+        body_bytes = await request.body()
+        request_data = {
+            "method": request.method,
+            "url": str(request.url),
+            "headers": dict(request.headers),
+            "body": (
+                body_bytes.decode("utf-8", errors="ignore") if body_bytes else None
+            ),
+        }
+
+        response_data = {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "content": (
+                bytes(response.body).decode("utf-8", errors="ignore")
+                if response.body
+                else None
+            ),
+        }
+
+        payload = {
+            "request": request_data,
+            "response": response_data,
+            "metadata": metadata,
+        }
+
+        return json.dumps(payload)
 
     def loads(self, data: Union[str, bytes]) -> StoredResponse:
         if isinstance(data, bytes):
@@ -48,16 +77,15 @@ class JSONSerializer(BaseSerializer):
         # Restore Request - create mock object for compatibility
         request_data = parsed["request"]
 
-        # Create minimal scope for Request
-        from urllib.parse import urlparse
-
         parsed_url = urlparse(request_data["url"])
         scope = {
             "type": "http",
             "method": request_data["method"],
             "path": parsed_url.path,
             "query_string": parsed_url.query.encode() if parsed_url.query else b"",
-            "headers": [[k.encode(), v.encode()] for k, v in request_data["headers"]],
+            "headers": [
+                [k.encode(), v.encode()] for k, v in request_data["headers"].items()
+            ],
         }
 
         # Create empty receive function
