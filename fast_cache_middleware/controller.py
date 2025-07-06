@@ -175,7 +175,7 @@ class Controller:
         """
         if await self.is_cachable_response(response):
             response.headers["X-Cache-Status"] = "HIT"
-            await storage.store(cache_key, response, request, {"ttl": ttl})
+            await storage.set(cache_key, response, request, {"ttl": ttl})
         else:
             logger.debug("Skip caching for response: %s", response.status_code)
 
@@ -191,7 +191,7 @@ class Controller:
         Returns:
             Response or None if cache is invalid/missing
         """
-        result = await storage.retrieve(cache_key)
+        result = await storage.get(cache_key)
         if result is None:
             return None
         response, _, _ = result
@@ -228,5 +228,5 @@ class Controller:
            and their joint invalidation
         """
         for path in invalidate_paths:
-            await storage.remove(path)
+            await storage.delete(path)
             logger.info("Invalidated cache for pattern: %s", path.pattern)

@@ -53,7 +53,7 @@ class InMemoryStorage(BaseStorage):
         self._last_expiry_check_time: float = 0
         self._expiry_check_interval: float = 60
 
-    async def store(
+    async def set(
         self, key: str, response: Response, request: Request, metadata: Metadata
     ) -> None:
         """Saves response to cache with TTL and LRU eviction support.
@@ -88,7 +88,7 @@ class InMemoryStorage(BaseStorage):
 
         self._cleanup_lru_items()
 
-    async def retrieve(self, key: str) -> Optional[StoredResponse]:
+    async def get(self, key: str) -> Optional[StoredResponse]:
         """Gets response from cache with lazy TTL checking.
 
         Element moves to the end to update LRU position.
@@ -113,7 +113,7 @@ class InMemoryStorage(BaseStorage):
 
         return self._storage[key]
 
-    async def remove(self, path: re.Pattern) -> None:
+    async def delete(self, path: re.Pattern) -> None:
         """Removes responses from cache by request path pattern.
 
         Args:

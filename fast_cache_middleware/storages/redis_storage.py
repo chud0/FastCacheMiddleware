@@ -37,7 +37,7 @@ class RedisStorage(BaseStorage):
         self._storage = redis_client
         self._namespace = namespace
 
-    async def store(
+    async def set(
         self, key: str, response: Response, request: Request, metadata: Metadata
     ) -> None:
         """
@@ -62,7 +62,7 @@ class RedisStorage(BaseStorage):
         await self._storage.set(full_key, value, ex=ttl)
         logger.info("Data written to Redis")
 
-    async def retrieve(self, key: str) -> Optional[StoredResponse]:
+    async def get(self, key: str) -> Optional[StoredResponse]:
         """
         Get response from Redis. If TTL expired returns None.
         """
@@ -82,7 +82,7 @@ class RedisStorage(BaseStorage):
             )
             return None
 
-    async def remove(self, path: re.Pattern) -> None:
+    async def delete(self, path: re.Pattern) -> None:
         """
         Deleting the cache using the specified path
         """
