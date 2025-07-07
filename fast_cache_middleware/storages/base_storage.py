@@ -1,4 +1,5 @@
 import re
+from abc import ABC, abstractmethod
 from typing import Optional, Tuple, TypeAlias, Union
 
 from starlette.requests import Request
@@ -10,7 +11,7 @@ from fast_cache_middleware.serializers import BaseSerializer, JSONSerializer, Me
 StoredResponse: TypeAlias = Tuple[Response, Request, Metadata]
 
 
-class BaseStorage:
+class BaseStorage(ABC):
     """Base class for cache storage.
 
     Args:
@@ -30,16 +31,28 @@ class BaseStorage:
 
         self._ttl = ttl
 
-    async def store(
+    @abstractmethod
+    async def set(
         self, key: str, response: Response, request: Request, metadata: Metadata
     ) -> None:
-        raise NotImplementedError()
+        """
+        Add data: response, request, metadata to the cache storage.
+        """
 
-    async def retrieve(self, key: str) -> Optional[StoredResponse]:
-        raise NotImplementedError()
+    @abstractmethod
+    async def get(self, key: str) -> Optional[StoredResponse]:
+        """
+        Get data from the cache.
+        """
 
-    async def remove(self, path: re.Pattern) -> None:
-        raise NotImplementedError()
+    @abstractmethod
+    async def delete(self, path: re.Pattern) -> None:
+        """
+        Delete data from the cache.
+        """
 
+    @abstractmethod
     async def close(self) -> None:
-        raise NotImplementedError()
+        """
+        Clear all data from the cache.
+        """

@@ -52,11 +52,11 @@ async def test_store_and_retrieve_works():
 
     mock_redis.exists.return_value = False
 
-    await storage.store("key1", response, request, metadata)
+    await storage.set("key1", response, request, metadata)
     mock_redis.set.assert_awaited_with("cache:key1", serialized_value, ex=1)
 
     mock_redis.get.return_value = serialized_value
-    result = await storage.retrieve("key1")
+    result = await storage.get("key1")
 
     assert result == ("deserialized_response", "req", {"meta": "data"})
 
@@ -77,7 +77,7 @@ async def test_store_overwrites_existing_key():
 
     mock_redis.exists.return_value = True
 
-    await storage.store("existing_key", response, request, metadata)
+    await storage.set("existing_key", response, request, metadata)
 
     mock_redis.delete.assert_awaited_with("cache:existing_key")
     mock_redis.set.assert_awaited_with("cache:existing_key", serialized_value, ex=10)
@@ -89,7 +89,7 @@ async def test_retrieve_returns_none_on_missing_key():
     storage = RedisStorage(redis_client=mock_redis)
     mock_redis.get.return_value = None
 
-    result = await storage.retrieve("missing")
+    result = await storage.get("missing")
     assert result is None
 
 
@@ -109,7 +109,7 @@ async def test_retrieve_returns_none_on_deserialization_error():
 
     mock_redis.get.return_value = b"invalid"
 
-    result = await storage.retrieve("corrupt")
+    result = await storage.get("corrupt")
     assert result is None
 
 
@@ -121,7 +121,7 @@ async def test_remove_by_regex():
     pattern = re.compile(r"^/api/.*")
     mock_redis.scan.return_value = (0, ["myspace:/api/test1", "myspace:/api/test2"])
 
-    await storage.remove(pattern)
+    await storage.delete(pattern)
 
     mock_redis.delete.assert_any_await("myspace:/api/test1")
     mock_redis.delete.assert_any_await("myspace:/api/test2")
@@ -136,7 +136,7 @@ async def test_remove_with_no_matches_logs_warning():
     pattern = re.compile(r"^/nothing.*")
     mock_redis.scan.return_value = (0, [])
 
-    await storage.remove(pattern)
+    await storage.delete(pattern)
     mock_redis.delete.assert_not_called()
 
 

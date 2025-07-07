@@ -54,12 +54,12 @@ async def test_store_and_retrieve_with_ttl(
     response = Response(content="test", status_code=200)
     metadata = {"key": "value"}
 
-    await storage.store("test_key", response, request, metadata)
+    await storage.set("test_key", response, request, metadata)
 
     if should_expire:
         await asyncio.sleep(wait_time)
 
-    result = await storage.retrieve("test_key")
+    result = await storage.get("test_key")
 
     if should_expire:
         assert result is None
@@ -92,16 +92,16 @@ async def test_expired_items_cleanup(
     metadata = {"key": "value"}
 
     # Добавляем элемент
-    await storage.store("test_key", response, request, metadata)
+    await storage.set("test_key", response, request, metadata)
 
     # Ждем
     await asyncio.sleep(wait_time)
 
     # Добавляем еще один элемент, который может вызвать очистку
-    await storage.store("test_key2", response, request, metadata)
+    await storage.set("test_key2", response, request, metadata)
 
     # Проверяем результат
-    result = await storage.retrieve("test_key")
+    result = await storage.get("test_key")
     if expected_cleanup_calls > 0:
         assert result is None  # Элемент должен быть удален
     else:
@@ -149,14 +149,14 @@ async def test_lru_eviction(
 
     # Добавляем элементы
     for i in range(num_items):
-        await storage.store(f"key_{i}", response, request, metadata)
+        await storage.set(f"key_{i}", response, request, metadata)
 
     # Проверяем размер
     assert len(storage) == expected_final_size
 
     # Проверяем, что последние добавленные элементы остались
     for i in range(max(0, num_items - max_size), num_items):
-        result = await storage.retrieve(f"key_{i}")
+        result = await storage.get(f"key_{i}")
         assert result is not None
 
 
@@ -181,21 +181,21 @@ async def test_retrieve_updates_lru_position(
     storage = InMemoryStorage(max_size=len(keys))
 
     for key in keys:
-        await storage.store(key, *mock_store_data)
+        await storage.set(key, *mock_store_data)
 
     # Добавляем элементы чтобы заполнить хранилище и получаем то что должно остаться
     for i in range(storage._cleanup_threshold):
-        await storage.store(f"key_{i}", *mock_store_data)
+        await storage.set(f"key_{i}", *mock_store_data)
 
         for key in retrive_keys:
-            await storage.retrieve(key)
+            await storage.get(key)
 
     # Проверяем, какой элемент остался
     for key in expected_keys:
-        assert await storage.retrieve(key) is not None
+        assert await storage.get(key) is not None
 
     for key in expire_keys:
-        assert await storage.retrieve(key) is None
+        assert await storage.get(key) is None
 
 
 @pytest.mark.asyncio
@@ -227,11 +227,11 @@ async def test_remove_by_path_pattern(
                 "headers": [("host", "test.com")],
             }
         )
-        await storage.store(key, mock_response, request, mock_metadata)
+        await storage.set(key, mock_response, request, mock_metadata)
 
     # Удаляем по паттерну
     pattern = re.compile(path_pattern)
-    await storage.remove(pattern)
+    await storage.delete(pattern)
 
     # Проверяем количество оставшихся элементов
     assert len(storage) == expected_remaining
@@ -252,9 +252,9 @@ async def test_retrieve_nonexistent_key(
     storage = InMemoryStorage()
 
     if should_exist:
-        await storage.store(key, *mock_store_data)
+        await storage.set(key, *mock_store_data)
 
-    result = await storage.retrieve(key)
+    result = await storage.get(key)
 
     if should_exist:
         assert result is not None
@@ -282,7 +282,7 @@ async def test_close_storage(num_items: int, expected_size_after_close: int) -> 
 
     # Добавляем элементы
     for i in range(num_items):
-        await storage.store(f"key_{i}", response, request, metadata)
+        await storage.set(f"key_{i}", response, request, metadata)
 
     assert len(storage) == num_items
 
@@ -313,15 +313,15 @@ async def test_store_overwrite_existing_key(
 
     # Добавляем исходный элемент
     original_metadata = {"original": "value"}
-    await storage.store("test_key", response, request, original_metadata)
+    await storage.set("test_key", response, request, original_metadata)
 
     if overwrite_key:
         # Перезаписываем элемент
         new_metadata = {"new": "value"}
-        await storage.store("test_key", response, request, new_metadata)
+        await storage.set("test_key", response, request, new_metadata)
 
     # Получаем элемент
-    result = await storage.retrieve("test_key")
+    result = await storage.get("test_key")
     assert result is not None
     _, _, stored_metadata = result
 
