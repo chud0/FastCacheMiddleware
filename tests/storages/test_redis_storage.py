@@ -6,7 +6,7 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import StorageError
+from fast_cache_middleware.exceptions import NotFoundError, StorageError
 from fast_cache_middleware.serializers import JSONSerializer
 from fast_cache_middleware.storages import RedisStorage
 
@@ -89,8 +89,10 @@ async def test_retrieve_returns_none_on_missing_key():
     storage = RedisStorage(redis_client=mock_redis)
     mock_redis.get.return_value = None
 
-    result = await storage.get("missing")
-    assert result is None
+    with pytest.raises(
+        NotFoundError, match="Key will be removed from Redis - TTL expired"
+    ):
+        await storage.get("missing")
 
 
 @pytest.mark.asyncio
@@ -98,7 +100,7 @@ async def test_retrieve_returns_none_on_deserialization_error():
     mock_redis = AsyncMock()
 
     def raise_error(_):
-        raise ValueError("bad format")
+        raise NotFoundError("corrupt")
 
     mock_serializer = MagicMock()
     mock_serializer.loads = raise_error
@@ -109,8 +111,8 @@ async def test_retrieve_returns_none_on_deserialization_error():
 
     mock_redis.get.return_value = b"invalid"
 
-    result = await storage.get("corrupt")
-    assert result is None
+    with pytest.raises(NotFoundError):
+        await storage.get("corrupt")
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,5 @@
 """Тесты для контроллера кеширования."""
-
+import logging
 import typing as tp
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from fast_cache_middleware.controller import Controller
+from fast_cache_middleware.exceptions import NotFoundError
 from fast_cache_middleware.schemas import CacheConfiguration, RouteInfo
 from fast_cache_middleware.storages import BaseStorage
 
@@ -192,6 +193,24 @@ class TestGetCachedResponse:
 
         assert result is None
         mock_storage.get.assert_called_once_with("test_key")
+
+    @pytest.mark.asyncio
+    async def test_get_cached_deserialization_error(
+        self,
+        controller: Controller,
+        mock_storage: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        message = "deserialization failed"
+        mock_storage.get.side_effect = NotFoundError("test_key", message)
+
+        result = await controller.get_cached_response("test_key", mock_storage)
+
+        assert result is None
+        mock_storage.get.assert_awaited_once_with("test_key")
+
+        with caplog.at_level("WARNING"):
+            assert message in caplog.text
 
 
 class TestCacheResponse:
