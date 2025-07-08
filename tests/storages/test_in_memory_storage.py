@@ -9,7 +9,7 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import StorageError
+from fast_cache_middleware.exceptions import NotFoundError, StorageError
 from fast_cache_middleware.serializers import Metadata
 from fast_cache_middleware.storages import InMemoryStorage
 
@@ -56,19 +56,14 @@ async def test_store_and_retrieve_with_ttl(
 
     await storage.set("test_key", response, request, metadata)
 
-    if should_expire:
-        await asyncio.sleep(wait_time)
-
-    result = await storage.get("test_key")
+    await asyncio.sleep(wait_time)
 
     if should_expire:
-        assert result is None
+        with pytest.raises(NotFoundError):
+            await storage.get("test_key")
     else:
+        result = await storage.get("test_key")
         assert result is not None
-        stored_response, _, stored_metadata = result
-        assert stored_response.body == b"test"
-        assert stored_response.status_code == 200
-        assert stored_metadata["key"] == "value"
 
 
 @pytest.mark.asyncio
@@ -101,10 +96,12 @@ async def test_expired_items_cleanup(
     await storage.set("test_key2", response, request, metadata)
 
     # Проверяем результат
-    result = await storage.get("test_key")
     if expected_cleanup_calls > 0:
-        assert result is None  # Элемент должен быть удален
+        with pytest.raises(NotFoundError):
+            result = await storage.get("test_key")
+            assert result is None  # Элемент должен быть удален
     else:
+        result = await storage.get("test_key")
         assert result is not None  # Элемент должен остаться
 
 
@@ -195,7 +192,8 @@ async def test_retrieve_updates_lru_position(
         assert await storage.get(key) is not None
 
     for key in expire_keys:
-        assert await storage.get(key) is None
+        with pytest.raises(NotFoundError):
+            await storage.get(key)
 
 
 @pytest.mark.asyncio
@@ -254,14 +252,15 @@ async def test_retrieve_nonexistent_key(
     if should_exist:
         await storage.set(key, *mock_store_data)
 
-    result = await storage.get(key)
-
     if should_exist:
+        result = await storage.get(key)
+
         assert result is not None
         stored_response, stored_request, stored_metadata = result
         assert stored_response.body == mock_store_data[0].body
     else:
-        assert result is None
+        with pytest.raises(NotFoundError):
+            await storage.get(key)
 
 
 @pytest.mark.asyncio

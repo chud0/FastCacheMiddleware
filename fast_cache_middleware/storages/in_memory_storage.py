@@ -7,7 +7,7 @@ from typing import Dict, Optional, Union
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import StorageError
+from fast_cache_middleware.exceptions import NotFoundError, StorageError
 from fast_cache_middleware.serializers import BaseSerializer, Metadata
 
 from .base_storage import BaseStorage, StoredResponse
@@ -101,13 +101,12 @@ class InMemoryStorage(BaseStorage):
             Tuple (response, request, metadata) if found and not expired, None if not found or expired
         """
         if key not in self._storage:
-            return None
+            raise NotFoundError(key, message="Key not found at storage")
 
         # Lazy TTL check
         if self._is_expired(key):
             self._pop_item(key)
-            logger.debug("Element %s removed from cache - TTL expired", key)
-            return None
+            raise NotFoundError(key, message="Key removed from cache - TTL expired")
 
         self._storage.move_to_end(key)
 
