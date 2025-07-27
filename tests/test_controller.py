@@ -9,7 +9,10 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from fast_cache_middleware.controller import Controller
-from fast_cache_middleware.exceptions import NotFoundError
+from fast_cache_middleware.exceptions import (
+    NotFoundStorageError,
+    TTLExpiredStorageError,
+)
 from fast_cache_middleware.schemas import CacheConfiguration, RouteInfo
 from fast_cache_middleware.storages import BaseStorage
 
@@ -195,22 +198,32 @@ class TestGetCachedResponse:
         mock_storage.get.assert_called_once_with("test_key")
 
     @pytest.mark.asyncio
-    async def test_get_cached_deserialization_error(
+    @pytest.mark.parametrize(
+        "exception_cls, message",
+        [
+            (NotFoundStorageError, "deserialization failed"),
+            (TTLExpiredStorageError, "ttl expired"),
+        ],
+    )
+    async def test_get_cached_storage_errors(
         self,
         controller: Controller,
         mock_storage: MagicMock,
         caplog: pytest.LogCaptureFixture,
+        exception_cls: type[Exception],
+        message: str,
     ) -> None:
-        message = "deserialization failed"
-        mock_storage.get.side_effect = NotFoundError("test_key", message)
+        # Ensure caplog is active before the call
+        caplog.set_level("WARNING")
+
+        # Mock error on get
+        mock_storage.get.side_effect = exception_cls("test_key", message)
 
         result = await controller.get_cached_response("test_key", mock_storage)
 
         assert result is None
         mock_storage.get.assert_awaited_once_with("test_key")
-
-        with caplog.at_level("WARNING"):
-            assert message in caplog.text
+        assert message in caplog.text
 
 
 class TestCacheResponse:
