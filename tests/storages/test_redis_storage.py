@@ -6,7 +6,11 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import NotFoundError, StorageError
+from fast_cache_middleware.exceptions import (
+    NotFoundStorageError,
+    StorageError,
+    TTLExpiredStorageError,
+)
 from fast_cache_middleware.serializers import JSONSerializer
 from fast_cache_middleware.storages import RedisStorage
 
@@ -21,7 +25,9 @@ from fast_cache_middleware.storages import RedisStorage
         (0, StorageError),
     ],
 )
-async def test_redis_storage_init_validation(ttl, expect_error):
+async def test_redis_storage_init_validation(
+    ttl: float, expect_error: StorageError | None
+) -> None:
     mock_redis = AsyncMock()
 
     if expect_error:
@@ -34,7 +40,7 @@ async def test_redis_storage_init_validation(ttl, expect_error):
 
 
 @pytest.mark.asyncio
-async def test_store_and_retrieve_works():
+async def test_store_and_retrieve_works() -> None:
     mock_redis = AsyncMock()
 
     mock_serializer = MagicMock()
@@ -62,7 +68,7 @@ async def test_store_and_retrieve_works():
 
 
 @pytest.mark.asyncio
-async def test_store_overwrites_existing_key():
+async def test_store_overwrites_existing_key() -> None:
     mock_redis = AsyncMock()
 
     mock_serializer = MagicMock()
@@ -84,23 +90,21 @@ async def test_store_overwrites_existing_key():
 
 
 @pytest.mark.asyncio
-async def test_retrieve_returns_none_on_missing_key():
+async def test_retrieve_returns_none_on_missing_key() -> None:
     mock_redis = AsyncMock()
     storage = RedisStorage(redis_client=mock_redis)
     mock_redis.get.return_value = None
 
-    with pytest.raises(
-        NotFoundError, match="Key will be removed from Redis - TTL expired"
-    ):
+    with pytest.raises(NotFoundStorageError, match="Data not found"):
         await storage.get("missing")
 
 
 @pytest.mark.asyncio
-async def test_retrieve_returns_none_on_deserialization_error():
+async def test_retrieve_returns_none_on_deserialization_error() -> None:
     mock_redis = AsyncMock()
 
     def raise_error(_):
-        raise NotFoundError("corrupt")
+        raise NotFoundStorageError("missing")
 
     mock_serializer = MagicMock()
     mock_serializer.loads = raise_error
@@ -111,12 +115,33 @@ async def test_retrieve_returns_none_on_deserialization_error():
 
     mock_redis.get.return_value = b"invalid"
 
-    with pytest.raises(NotFoundError):
-        await storage.get("corrupt")
+    with pytest.raises(NotFoundStorageError, match="Data not found"):
+        await storage.get("missing")
 
 
 @pytest.mark.asyncio
-async def test_remove_by_regex():
+async def test_retrieve_returns_none_if_ttl_expired() -> None:
+    mock_redis = AsyncMock()
+
+    def raise_error(_) -> None:
+        raise TTLExpiredStorageError("corrupt")
+
+    mock_serializer = MagicMock()
+    mock_serializer.loads = raise_error
+
+    mock_serializer.dumps = AsyncMock(return_value=b"serialized")
+
+    storage = RedisStorage(redis_client=mock_redis, serializer=mock_serializer)
+
+    mock_redis.get.return_value = b"invalid"
+
+    with pytest.raises(TTLExpiredStorageError, match="TTL expired"):
+        result = await storage.get("corrupt")
+        print(result)
+
+
+@pytest.mark.asyncio
+async def test_remove_by_regex() -> None:
     mock_redis = AsyncMock()
     storage = RedisStorage(redis_client=mock_redis, namespace="myspace")
 
@@ -131,7 +156,7 @@ async def test_remove_by_regex():
 
 
 @pytest.mark.asyncio
-async def test_remove_with_no_matches_logs_warning():
+async def test_remove_with_no_matches_logs_warning() -> None:
     mock_redis = AsyncMock()
     storage = RedisStorage(redis_client=mock_redis, namespace="myspace")
 
@@ -143,7 +168,7 @@ async def test_remove_with_no_matches_logs_warning():
 
 
 @pytest.mark.asyncio
-async def test_close_flushes_database():
+async def test_close_flushes_database() -> None:
     mock_redis = AsyncMock()
     storage = RedisStorage(redis_client=mock_redis)
 
@@ -151,7 +176,7 @@ async def test_close_flushes_database():
     mock_redis.flushdb.assert_awaited_once()
 
 
-def test_full_key():
+def test_full_key() -> None:
     mock_redis = AsyncMock()
     storage = RedisStorage(redis_client=mock_redis, namespace="custom")
 

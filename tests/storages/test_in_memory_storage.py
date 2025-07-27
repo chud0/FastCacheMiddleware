@@ -72,15 +72,25 @@ async def test_store_and_retrieve_with_ttl(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ttl, cleanup_interval, wait_time, expected_cleanup_calls",
+    "ttl, cleanup_interval, wait_time, expected_cleanup_calls, expect_error",
     [
-        (0.1, 0.05, 0.15, 1),  # Should trigger the cleanup
-        (1.0, 0.05, 0.15, 0),  # Should not cause cleanup
-        (0.1, 0.2, 0.15, 1),  # The cleaning interval is longer than the waiting time
+        (0.1, 0.05, 0.15, 1, NotFoundStorageError),  # Should trigger the cleanup
+        (1.0, 0.05, 0.15, 0, None),  # Should not cause cleanup
+        (   # The cleaning interval is longer than the waiting time
+            0.1,
+            0.2,
+            0.15,
+            1,
+            TTLExpiredStorageError,
+        ),
     ],
 )
 async def test_expired_items_cleanup(
-    ttl: float, cleanup_interval: float, wait_time: float, expected_cleanup_calls: int
+    ttl: float,
+    cleanup_interval: float,
+    wait_time: float,
+    expected_cleanup_calls: int,
+    expect_error: TTLExpiredStorageError | NotFoundStorageError | None,
 ) -> None:
     """It tests the automatic cleaning of expired items."""
     storage = InMemoryStorage(max_size=10, ttl=ttl)
@@ -100,8 +110,8 @@ async def test_expired_items_cleanup(
     await storage.set("test_key2", response, request, metadata)
 
     # Checking the result
-    if expected_cleanup_calls > 0:
-        with pytest.raises(TTLExpiredStorageError, match="TTL expired"):
+    if expected_cleanup_calls > 0 and expect_error is not None:
+        with pytest.raises(expect_error):
             result = await storage.get("test_key")
             assert result is None  # The element must be deleted
     else:
