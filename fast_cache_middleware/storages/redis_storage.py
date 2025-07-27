@@ -11,7 +11,11 @@ except ImportError:
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import NotFoundError, StorageError
+from fast_cache_middleware.exceptions import (
+    StorageError,
+    TTLExpiredStorageError,
+    NotFoundStorageError,
+)
 from fast_cache_middleware.serializers import BaseSerializer, JSONSerializer, Metadata
 
 from .base_storage import BaseStorage, StoredResponse
@@ -67,12 +71,14 @@ class RedisStorage(BaseStorage):
         Get response from Redis. If TTL expired returns None.
         """
         full_key = self._full_key(key)
+
+        if not self._storage.exists(full_key):
+            raise TTLExpiredStorageError(full_key)
+
         raw_data = await self._storage.get(full_key)
 
         if raw_data is None:
-            raise NotFoundError(
-                full_key, message="Key will be removed from Redis - TTL expired"
-            )
+            raise NotFoundStorageError(key)
 
         logger.debug(f"Takin data from Redis: %s", raw_data)
 
