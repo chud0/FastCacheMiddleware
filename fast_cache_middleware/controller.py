@@ -7,7 +7,7 @@ from typing import Optional
 from starlette.requests import Request
 from starlette.responses import Response
 
-from .exceptions import NotFoundError
+from .exceptions import NotFoundStorageError, TTLExpiredStorageError
 from .schemas import CacheConfiguration
 from .storages import BaseStorage
 
@@ -195,9 +195,11 @@ class Controller:
 
         try:
             result = await storage.get(cache_key)
-        except NotFoundError as e:
-            logger.warning("No cache found: %s", e)
+        except NotFoundStorageError as e:
+            logger.exception(e)
             return None
+        except TTLExpiredStorageError as e:
+            logger.exception(e)
 
         if result is None:
             return None
