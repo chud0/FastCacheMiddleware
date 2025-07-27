@@ -12,9 +12,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from fast_cache_middleware.exceptions import (
+    NotFoundStorageError,
     StorageError,
     TTLExpiredStorageError,
-    NotFoundStorageError,
 )
 from fast_cache_middleware.serializers import BaseSerializer, JSONSerializer, Metadata
 

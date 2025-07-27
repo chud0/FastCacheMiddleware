@@ -76,7 +76,7 @@ async def test_store_and_retrieve_with_ttl(
     [
         (0.1, 0.05, 0.15, 1, NotFoundStorageError),  # Should trigger the cleanup
         (1.0, 0.05, 0.15, 0, None),  # Should not cause cleanup
-        (   # The cleaning interval is longer than the waiting time
+        (  # The cleaning interval is longer than the waiting time
             0.1,
             0.2,
             0.15,
@@ -90,7 +90,7 @@ async def test_expired_items_cleanup(
     cleanup_interval: float,
     wait_time: float,
     expected_cleanup_calls: int,
-    expect_error: TTLExpiredStorageError | NotFoundStorageError | None,
+    expect_error: tp.Type[BaseException] | None,
 ) -> None:
     """It tests the automatic cleaning of expired items."""
     storage = InMemoryStorage(max_size=10, ttl=ttl)

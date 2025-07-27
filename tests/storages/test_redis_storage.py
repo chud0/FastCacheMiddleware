@@ -1,5 +1,5 @@
 import re
-from typing import cast
+from typing import Type
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,7 +26,7 @@ from fast_cache_middleware.storages import RedisStorage
     ],
 )
 async def test_redis_storage_init_validation(
-    ttl: float, expect_error: StorageError | None
+    ttl: float, expect_error: Type[BaseException] | None
 ) -> None:
     mock_redis = AsyncMock()
 
