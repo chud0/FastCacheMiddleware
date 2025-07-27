@@ -56,7 +56,7 @@ async def test_store_and_retrieve_works() -> None:
     response = Response(content="hello", status_code=200)
     metadata: dict[str, str | int] = {}
 
-    mock_redis.exists.return_value = False
+    mock_redis.exists.return_value = True
 
     await storage.set("key1", response, request, metadata)
     mock_redis.set.assert_awaited_with("cache:key1", serialized_value, ex=1)
