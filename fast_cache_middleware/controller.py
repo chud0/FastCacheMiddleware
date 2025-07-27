@@ -195,11 +195,9 @@ class Controller:
 
         try:
             result = await storage.get(cache_key)
-        except NotFoundStorageError as e:
-            logger.exception(e)
+        except (NotFoundStorageError, TTLExpiredStorageError) as e:
+            logger.warning(e)
             return None
-        except TTLExpiredStorageError as e:
-            logger.exception(e)
 
         if result is None:
             return None
