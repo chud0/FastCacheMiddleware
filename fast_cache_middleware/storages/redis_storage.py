@@ -72,7 +72,7 @@ class RedisStorage(BaseStorage):
         """
         full_key = self._full_key(key)
 
-        if not self._storage.exists(full_key):
+        if not await self._storage.exists(full_key):
             raise TTLExpiredStorageError(full_key)
 
         raw_data = await self._storage.get(full_key)
