@@ -2,6 +2,13 @@
 
 🚀 **High-performance ASGI middleware for caching with route resolution approach**
 
+[![Python version](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Poetry](https://img.shields.io/badge/managed%20by-poetry-4F5D95?logo=poetry&logoColor=white)](https://python-poetry.org/)
+[![Built for FastAPI](https://img.shields.io/badge/Built_for-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PyPI version](https://img.shields.io/pypi/v/fast-cache-middleware)](https://pypi.org/project/fast-cache-middleware/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/chud0/FastCacheMiddleware/blob/main/LICENSE)
+
+[![CI](https://github.com/chud0/FastCacheMiddleware/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chud0/FastCacheMiddleware/actions/workflows/ci.yml)
 ## ✨ Key Features
 
 FastCacheMiddleware uses a **route resolution approach** - it analyzes application routes at startup and extracts cache configurations from FastAPI dependencies.
