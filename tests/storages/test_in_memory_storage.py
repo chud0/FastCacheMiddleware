@@ -9,7 +9,11 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import StorageError
+from fast_cache_middleware.exceptions import (
+    NotFoundStorageError,
+    StorageError,
+    TTLExpiredStorageError,
+)
 from fast_cache_middleware.serializers import Metadata
 from fast_cache_middleware.storages import InMemoryStorage
 
@@ -26,7 +30,7 @@ from fast_cache_middleware.storages import InMemoryStorage
 def test_initialization_params(
     max_size: int, ttl: float, expected_error: tp.Type[StorageError] | None
 ) -> None:
-    """Тестирует параметры инициализации InMemoryStorage."""
+    """Tests InMemoryStorage initialization parameters."""
     if expected_error is None:
         storage = InMemoryStorage(max_size=max_size, ttl=ttl)
         assert storage._max_size == max_size
@@ -40,15 +44,15 @@ def test_initialization_params(
 @pytest.mark.parametrize(
     "ttl, wait_time, should_expire",
     [
-        (0.1, 0.15, True),  # Должен истечь
-        (1.0, 0.5, False),  # Не должен истечь
-        (None, 1.0, False),  # Без TTL не истекает
+        (0.1, 0.15, True),  # Must expire
+        (1.0, 0.5, False),  # Must not expire
+        (None, 1.0, False),  # Does not expire without TTL
     ],
 )
 async def test_store_and_retrieve_with_ttl(
     ttl: tp.Optional[float], wait_time: float, should_expire: bool
 ) -> None:
-    """Тестирует сохранение и получение с TTL."""
+    """It tests saving and receiving with TTL."""
     storage = InMemoryStorage(ttl=ttl)
     request = Request(scope={"type": "http", "method": "GET", "path": "/test"})
     response = Response(content="test", status_code=200)
@@ -56,34 +60,39 @@ async def test_store_and_retrieve_with_ttl(
 
     await storage.set("test_key", response, request, metadata)
 
-    if should_expire:
-        await asyncio.sleep(wait_time)
-
-    result = await storage.get("test_key")
+    await asyncio.sleep(wait_time)
 
     if should_expire:
-        assert result is None
+        with pytest.raises(TTLExpiredStorageError):
+            await storage.get("test_key")
     else:
+        result = await storage.get("test_key")
         assert result is not None
-        stored_response, _, stored_metadata = result
-        assert stored_response.body == b"test"
-        assert stored_response.status_code == 200
-        assert stored_metadata["key"] == "value"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "ttl, cleanup_interval, wait_time, expected_cleanup_calls",
+    "ttl, cleanup_interval, wait_time, expected_cleanup_calls, expect_error",
     [
-        (0.1, 0.05, 0.15, 1),  # Должен вызвать очистку
-        (1.0, 0.05, 0.15, 0),  # Не должен вызывать очистку
-        (0.1, 0.2, 0.15, 1),  # Интервал очистки больше времени ожидания
+        (0.1, 0.05, 0.15, 1, NotFoundStorageError),  # Should trigger the cleanup
+        (1.0, 0.05, 0.15, 0, None),  # Should not cause cleanup
+        (  # The cleaning interval is longer than the waiting time
+            0.1,
+            0.2,
+            0.15,
+            1,
+            TTLExpiredStorageError,
+        ),
     ],
 )
 async def test_expired_items_cleanup(
-    ttl: float, cleanup_interval: float, wait_time: float, expected_cleanup_calls: int
+    ttl: float,
+    cleanup_interval: float,
+    wait_time: float,
+    expected_cleanup_calls: int,
+    expect_error: tp.Type[BaseException] | None,
 ) -> None:
-    """Тестирует автоматическую очистку истёкших элементов."""
+    """It tests the automatic cleaning of expired items."""
     storage = InMemoryStorage(max_size=10, ttl=ttl)
     storage._expiry_check_interval = cleanup_interval
 
@@ -91,35 +100,37 @@ async def test_expired_items_cleanup(
     response = Response(content="test", status_code=200)
     metadata = {"key": "value"}
 
-    # Добавляем элемент
+    # Adding an element
     await storage.set("test_key", response, request, metadata)
 
-    # Ждем
+    # Waiting
     await asyncio.sleep(wait_time)
 
-    # Добавляем еще один элемент, который может вызвать очистку
+    # Adding another element that can cause a cleanup
     await storage.set("test_key2", response, request, metadata)
 
-    # Проверяем результат
-    result = await storage.get("test_key")
-    if expected_cleanup_calls > 0:
-        assert result is None  # Элемент должен быть удален
+    # Checking the result
+    if expected_cleanup_calls > 0 and expect_error is not None:
+        with pytest.raises(expect_error):
+            result = await storage.get("test_key")
+            assert result is None  # The element must be deleted
     else:
-        assert result is not None  # Элемент должен остаться
+        result = await storage.get("test_key")
+        assert result is not None  # The element must remain
 
 
 @pytest.mark.parametrize(
     "max_size, cleanup_batch_size, cleanup_threshold",
     [
-        (3, 1, 4),  # Меньшие значения
-        (100, 10, 105),  # Стандартные значения
-        (1000, 100, 1050),  # Большие значения
+        (3, 1, 4),  # Lower values
+        (100, 10, 105),  # Standard values
+        (1000, 100, 1050),  # Large values
     ],
 )
 def test_cleanup_parameters_calculation(
     max_size: int, cleanup_batch_size: int, cleanup_threshold: int
 ) -> None:
-    """Тестирует расчет параметров очистки."""
+    """Tests the calculation of cleaning parameters."""
     storage = InMemoryStorage(max_size=max_size, ttl=None)
 
     assert storage._cleanup_batch_size == cleanup_batch_size
@@ -131,30 +142,34 @@ def test_cleanup_parameters_calculation(
 @pytest.mark.parametrize(
     "max_size, num_items, expected_final_size",
     [
-        (5, 3, 3),  # Просто сторит 3 элемента
-        (3, 5, 4),  # Трешхолд 4, удаляем по 1 элементу,
-        # поэтому после вставки пятого очистка прошла но осталось 4 элемента
-        (100, 105, 105),  # Трешхолд 105, еще не превышен
-        (100, 106, 100),  # Вот теперь перешагнули и удалилось батчем 6 элементов
+        (5, 3, 3),  # Just stores 3 items
+        (3, 5, 4),  # Trash hold 4, we delete 1 element each,,
+        # therefore, after inserting the fifth, the cleaning went through, but there were 4 elements left.
+        (100, 105, 105),  # Threshold 105, not exceeded yet
+        (
+            100,
+            106,
+            100,
+        ),  # Now 6 elements have been stepped over and removed by the batch
     ],
 )
 async def test_lru_eviction(
     max_size: int, num_items: int, expected_final_size: int
 ) -> None:
-    """Тестирует LRU выселение при превышении лимита."""
+    """It tests LRU eviction when the limit is exceeded."""
     storage = InMemoryStorage(max_size=max_size, ttl=None)
     request = Request(scope={"type": "http", "method": "GET", "path": "/test"})
     response = Response(content="test", status_code=200)
     metadata = {"key": "value"}
 
-    # Добавляем элементы
+    # Adding elements
     for i in range(num_items):
         await storage.set(f"key_{i}", response, request, metadata)
 
-    # Проверяем размер
+    # Checking the size
     assert len(storage) == expected_final_size
 
-    # Проверяем, что последние добавленные элементы остались
+    # We check that the last added items remain.
     for i in range(max(0, num_items - max_size), num_items):
         result = await storage.get(f"key_{i}")
         assert result is not None
@@ -164,10 +179,18 @@ async def test_lru_eviction(
 @pytest.mark.parametrize(
     "retrive_keys, expected_keys, expire_keys",
     [
-        (["first"], ["first"], []),  # Читали - остался
-        (["first"], ["first"], ["second"]),  # Не читали - вытеснили
-        (["first", "second"], ["first", "second"], []),  # Читали оба - остались оба
-        ([], [], ["first", "second"]),  # Не читали - вылетели оба
+        (["first"], ["first"], []),  # If you read it, you stayed
+        (  # If they didn 't read it , they were ousted.
+            ["first"],
+            ["first"],
+            ["second"],
+        ),
+        (  # We both read it, but we both stayed
+            ["first", "second"],
+            ["first", "second"],
+            [],
+        ),
+        ([], [], ["first", "second"]),  # If they didn't read it, they both flew out
     ],
 )
 async def test_retrieve_updates_lru_position(
@@ -176,35 +199,40 @@ async def test_retrieve_updates_lru_position(
     expire_keys: tp.List[str],
     mock_store_data: tp.Tuple[Response, Request, Metadata],
 ) -> None:
-    """Тестирует обновление позиции LRU при получении элемента."""
+    """It tests updating the LRU position when an item is received."""
     keys = set(retrive_keys + expire_keys + expected_keys)
     storage = InMemoryStorage(max_size=len(keys))
 
     for key in keys:
         await storage.set(key, *mock_store_data)
 
-    # Добавляем элементы чтобы заполнить хранилище и получаем то что должно остаться
+    # We add items to fill up the storage and get what should be left
     for i in range(storage._cleanup_threshold):
         await storage.set(f"key_{i}", *mock_store_data)
 
         for key in retrive_keys:
             await storage.get(key)
 
-    # Проверяем, какой элемент остался
+    # Checking which element is left
     for key in expected_keys:
         assert await storage.get(key) is not None
 
     for key in expire_keys:
-        assert await storage.get(key) is None
+        with pytest.raises(NotFoundStorageError, match="Data not found"):
+            await storage.get(key)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path_pattern, keys, expected_remaining",
     [
-        (r"/api/.*", ["/api/users", "/api/posts", "/admin"], 1),  # Удаляет /api/*
-        (r"/admin", ["/api/users", "/api/posts", "/admin"], 2),  # Удаляет только /admin
-        (r"/nonexistent", ["/api/users", "/api/posts"], 2),  # Ничего не удаляет
+        (r"/api/.*", ["/api/users", "/api/posts", "/admin"], 1),  # Deletes /api/*
+        (r"/admin", ["/api/users", "/api/posts", "/admin"], 2),  # Deletes only /admin
+        (  # It doesn't delete anything
+            r"/nonexistent",
+            ["/api/users", "/api/posts"],
+            2,
+        ),
     ],
 )
 async def test_remove_by_path_pattern(
@@ -214,10 +242,10 @@ async def test_remove_by_path_pattern(
     mock_response: Response,
     mock_metadata: Metadata,
 ) -> None:
-    """Тестирует удаление по паттерну пути."""
+    """It tests deletion based on the path pattern."""
     storage = InMemoryStorage()
 
-    # Добавляем элементы с разными путями
+    # Adding elements with different paths
     for key in keys:
         request = Request(
             scope={
@@ -229,11 +257,11 @@ async def test_remove_by_path_pattern(
         )
         await storage.set(key, mock_response, request, mock_metadata)
 
-    # Удаляем по паттерну
+    # Deleting according to the pattern
     pattern = re.compile(path_pattern)
     await storage.delete(pattern)
 
-    # Проверяем количество оставшихся элементов
+    # Checking the number of remaining elements
     assert len(storage) == expected_remaining
 
 
@@ -248,20 +276,21 @@ async def test_remove_by_path_pattern(
 async def test_retrieve_nonexistent_key(
     key: str, should_exist: bool, mock_store_data: tp.Tuple[Response, Request, Metadata]
 ) -> None:
-    """Тестирует получение несуществующих ключей."""
+    """It is testing the receipt of non-existent keys."""
     storage = InMemoryStorage()
 
     if should_exist:
         await storage.set(key, *mock_store_data)
 
-    result = await storage.get(key)
-
     if should_exist:
+        result = await storage.get(key)
+
         assert result is not None
         stored_response, stored_request, stored_metadata = result
         assert stored_response.body == mock_store_data[0].body
     else:
-        assert result is None
+        with pytest.raises(NotFoundStorageError, match="Data not found"):
+            await storage.get(key)
 
 
 @pytest.mark.asyncio
@@ -274,19 +303,19 @@ async def test_retrieve_nonexistent_key(
     ],
 )
 async def test_close_storage(num_items: int, expected_size_after_close: int) -> None:
-    """Тестирует закрытие хранилища."""
+    """It is testing the closure of the storage."""
     storage = InMemoryStorage(max_size=20, ttl=None)
     request = Request(scope={"type": "http", "method": "GET", "path": "/test"})
     response = Response(content="test", status_code=200)
     metadata = {"key": "value"}
 
-    # Добавляем элементы
+    # Adding elements
     for i in range(num_items):
         await storage.set(f"key_{i}", response, request, metadata)
 
     assert len(storage) == num_items
 
-    # Закрываем хранилище
+    # Closing the storage
     await storage.close()
 
     assert len(storage) == expected_size_after_close
@@ -306,26 +335,26 @@ async def test_close_storage(num_items: int, expected_size_after_close: int) -> 
 async def test_store_overwrite_existing_key(
     overwrite_key: bool, expected_metadata: Metadata
 ) -> None:
-    """Тестирует перезапись существующего ключа."""
+    """It is testing overwriting of an existing key."""
     storage = InMemoryStorage(max_size=10, ttl=None)
     request = Request(scope={"type": "http", "method": "GET", "path": "/test"})
     response = Response(content="test", status_code=200)
 
-    # Добавляем исходный элемент
+    # Adding the original element
     original_metadata = {"original": "value"}
     await storage.set("test_key", response, request, original_metadata)
 
     if overwrite_key:
-        # Перезаписываем элемент
+        # Overwriting the element
         new_metadata = {"new": "value"}
         await storage.set("test_key", response, request, new_metadata)
 
-    # Получаем элемент
+    # Getting the element
     result = await storage.get("test_key")
     assert result is not None
     _, _, stored_metadata = result
 
-    # Проверяем метаданные (исключая write_time, так как он динамический)
+    # We check the metadata (excluding write_time, since it is dynamic)
     for key, value in expected_metadata.items():
         if key != "write_time":
             assert stored_metadata[key] == value

@@ -7,6 +7,7 @@ from typing import Optional
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .exceptions import NotFoundStorageError, TTLExpiredStorageError
 from .schemas import CacheConfiguration
 from .storages import BaseStorage
 
@@ -181,7 +182,7 @@ class Controller:
 
     async def get_cached_response(
         self, cache_key: str, storage: BaseStorage
-    ) -> Optional[Response]:
+    ) -> Response | None:
         """Gets cached response if it exists and is valid.
 
         Args:
@@ -191,9 +192,16 @@ class Controller:
         Returns:
             Response or None if cache is invalid/missing
         """
-        result = await storage.get(cache_key)
+
+        try:
+            result = await storage.get(cache_key)
+        except (NotFoundStorageError, TTLExpiredStorageError) as e:
+            logger.warning(e)
+            return None
+
         if result is None:
             return None
+
         response, _, _ = result
         return response
 

@@ -11,7 +11,11 @@ except ImportError:
 from starlette.requests import Request
 from starlette.responses import Response
 
-from fast_cache_middleware.exceptions import StorageError
+from fast_cache_middleware.exceptions import (
+    NotFoundStorageError,
+    StorageError,
+    TTLExpiredStorageError,
+)
 from fast_cache_middleware.serializers import BaseSerializer, JSONSerializer, Metadata
 
 from .base_storage import BaseStorage, StoredResponse
@@ -62,25 +66,23 @@ class RedisStorage(BaseStorage):
         await self._storage.set(full_key, value, ex=ttl)
         logger.info("Data written to Redis")
 
-    async def get(self, key: str) -> Optional[StoredResponse]:
+    async def get(self, key: str) -> StoredResponse:
         """
         Get response from Redis. If TTL expired returns None.
         """
         full_key = self._full_key(key)
+
+        if not await self._storage.exists(full_key):
+            raise TTLExpiredStorageError(full_key)
+
         raw_data = await self._storage.get(full_key)
 
         if raw_data is None:
-            logger.debug("Key %s will be removed from Redis - TTL expired", full_key)
-            return None
+            raise NotFoundStorageError(key)
 
         logger.debug(f"Takin data from Redis: %s", raw_data)
-        try:
-            return self._serializer.loads(raw_data)
-        except Exception as e:
-            logger.warning(
-                "Failed to deserialize cached response for key %s: %s", key, e
-            )
-            return None
+
+        return self._serializer.loads(raw_data)
 
     async def delete(self, path: re.Pattern) -> None:
         """
