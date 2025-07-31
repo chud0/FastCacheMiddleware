@@ -2,6 +2,8 @@
 
 🚀 **High-performance ASGI middleware for caching with route resolution approach**
 
+[![PyPI version](https://img.shields.io/pypi/v/fast-cache-middleware)](https://pypi.org/project/fast-cache-middleware/)
+[![CI](https://github.com/chud0/FastCacheMiddleware/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chud0/FastCacheMiddleware/actions/workflows/ci.yml)
 ## ✨ Key Features
 
 FastCacheMiddleware uses a **route resolution approach** - it analyzes application routes at startup and extracts cache configurations from FastAPI dependencies.
