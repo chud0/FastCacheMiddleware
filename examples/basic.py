@@ -115,6 +115,16 @@ async def get_users() -> tp.List[UserResponse]:
     ]
 
 
+@app.get("/orgs/{org_id}/users/{user_id}", dependencies=[CacheConfig(max_age=300)])
+async def get_user_in_org(org_id: int, user_id: int) -> UserResponse:
+    """Получение пользователя в конкретной организации.
+
+    Пример более сложного пути с несколькими параметрами.
+    """
+    user = _USERS_STORAGE.get(user_id)
+    return UserResponse(user_id=user_id, name=user.name, email=user.email)
+
+
 @app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
 async def create_user(user_id: int, user_data: User) -> UserResponse:
     """Создание пользователя с инвалидацией кеша.
