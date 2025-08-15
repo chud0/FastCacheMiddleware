@@ -313,11 +313,6 @@ class FastCacheMiddleware(BaseMiddleware):
                         cache_drop_config.paths if cache_drop_config else None
                     ),
                 )
-                logger.debug(
-                    "Extracted cache configuration: %s for paths %s",
-                    cache_configuration.invalidate_paths,
-                    route.name,
-                )
                 route_info = RouteInfo(
                     route=route,
                     cache_config=cache_configuration,
@@ -360,13 +355,13 @@ class FastCacheMiddleware(BaseMiddleware):
     def _convert_methods_to_path(
         self,
         route_names: dict[str, str],
-        cache_drop_config: CacheDropConfig,
+        cache_drop_config: CacheDropConfig | None,
     ) -> list[re.Pattern] | None:
         if not cache_drop_config:
             return None
 
         for method in cache_drop_config.methods:
-            name = getattr(method, "__name__", None)
+            name = getattr(method, "__name__")
             route = route_names.get(name)
             if not route:
                 continue
@@ -377,9 +372,6 @@ class FastCacheMiddleware(BaseMiddleware):
             first_seg = m.group(1)
 
             pattern_path = rf"^{re.escape(first_seg)}(?:/|$)"
-            logger.debug(
-                "Route '%s' -> first segment pattern '%s'", route, pattern_path
-            )
             cache_drop_config.paths.append(re.compile(pattern_path))
 
         return cache_drop_config.paths
