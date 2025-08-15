@@ -85,7 +85,7 @@ def app() -> FastAPI:
     app.router.add_api_route(
         "/users/{user_id}",
         delete_user,
-        dependencies=[CacheDropConfig(paths=["/users/"])],
+        dependencies=[CacheDropConfig(methods=[get_user])],
         methods={HTTPMethod.DELETE.value},
     )
     app.router.add_api_route(

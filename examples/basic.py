@@ -147,7 +147,10 @@ async def update_user(user_id: int, user_data: User) -> UserResponse:
     return UserResponse(user_id=user_id, name=user_data.name, email=user_data.email)
 
 
-@app.delete("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
+@app.delete(
+    "/users/{user_id}",
+    dependencies=[CacheDropConfig(methods=[get_user, get_user_in_org])],
+)
 async def delete_user(user_id: int) -> UserResponse:
     """Удаление пользователя с инвалидацией кеша."""
     user = _USERS_STORAGE.get(user_id)
