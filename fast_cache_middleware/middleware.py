@@ -1,5 +1,6 @@
 import copy
 import logging
+import re
 import typing as tp
 
 from fastapi import FastAPI, routing
@@ -294,11 +295,15 @@ class FastCacheMiddleware(BaseMiddleware):
             routes: List of routes to analyze
         """
         routes_info = []
+        route_names = {route.name: route.path for route in routes}
+
         for route in routes:
             (
                 cache_config,
                 cache_drop_config,
             ) = self._extract_cache_configs_from_route(route)
+
+            self._convert_methods_to_path(route_names, cache_drop_config)
 
             if cache_config or cache_drop_config:
                 cache_configuration = CacheConfiguration(
@@ -308,7 +313,6 @@ class FastCacheMiddleware(BaseMiddleware):
                         cache_drop_config.paths if cache_drop_config else None
                     ),
                 )
-
                 route_info = RouteInfo(
                     route=route,
                     cache_config=cache_configuration,
@@ -347,6 +351,30 @@ class FastCacheMiddleware(BaseMiddleware):
                 continue
 
         return cache_config, cache_drop_config
+
+    def _convert_methods_to_path(
+        self,
+        route_names: dict[str, str],
+        cache_drop_config: CacheDropConfig | None,
+    ) -> list[re.Pattern] | None:
+        if not cache_drop_config:
+            return None
+
+        for method in cache_drop_config.methods:
+            name = getattr(method, "__name__")
+            route = route_names.get(name)
+            if not route:
+                continue
+
+            m = re.match(r"(/[^/]+)", route)
+            if not m:
+                continue
+            first_seg = m.group(1)
+
+            pattern_path = rf"^{re.escape(first_seg)}(?:/|$)"
+            cache_drop_config.paths.append(re.compile(pattern_path))
+
+        return cache_drop_config.paths
 
     def _find_matching_route(
         self, request: Request, routes_info: list[RouteInfo]
