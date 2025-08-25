@@ -28,6 +28,10 @@ httpx = "^0.28.1"
 uvicorn = "^0.34.3"
 types-redis = "^4.6.0.20241004"
 
+
+[tool.poetry.group.docs.dependencies]
+mkdocs-material = "^9.6.18"
+
 [tool.black]
 line-length = 88
 target-version = ['py311']
