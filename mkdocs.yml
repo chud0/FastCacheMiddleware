@@ -1,0 +1,54 @@
+site_name: Fast Cache Middleware
+site_url: ""
+nav:
+  - Welcome!: index.md
+  - Quick Start: quick_start.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Storages: storages.md
+  - Performance: performance.md
+  - Advanced usage: advanced_usage.md
+  - Security: security.md
+  - Contributing: for_developers.md
+theme:
+  name: material
+  features:
+    - navigation.top
+    - content.code.copy
+  icon:
+    repo: material/github
+  palette:
+    # Dark Mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Dark mode
+      primary: green
+      accent: deep purple
+
+    # Light Mode
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Light mode
+      primary: dark blue
+      accent: deep orange
+
+repo_url: https://github.com/chud0/FastCacheMiddleware
+repo_name: GitHub
+copyright: Copyright &copy; 2025 FastCacheMiddleware
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
