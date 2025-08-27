@@ -6,7 +6,7 @@ import typing as tp
 from fastapi import FastAPI, routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Match, Mount
+from starlette.routing import Match, Mount, compile_path, get_name
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ._helpers import set_cache_age_in_openapi_schema
@@ -360,19 +360,22 @@ class FastCacheMiddleware(BaseMiddleware):
         if not cache_drop_config:
             return None
 
+        seen: set[str] = set()
+
         for method in cache_drop_config.methods:
-            name = getattr(method, "__name__")
+            name = get_name(method)
             route = route_names.get(name)
             if not route:
                 continue
 
-            m = re.match(r"(/[^/]+)", route)
-            if not m:
-                continue
-            first_seg = m.group(1)
+            regex = compile_path(route)[0]
+            key = regex.pattern
 
-            pattern_path = rf"^{re.escape(first_seg)}(?:/|$)"
-            cache_drop_config.paths.append(re.compile(pattern_path))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            cache_drop_config.paths.append(regex)
 
         return cache_drop_config.paths
 
