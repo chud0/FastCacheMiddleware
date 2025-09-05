@@ -303,7 +303,10 @@ class FastCacheMiddleware(BaseMiddleware):
                 cache_drop_config,
             ) = self._extract_cache_configs_from_route(route)
 
-            self._convert_methods_to_path(route_names, cache_drop_config)
+            paths = self._convert_methods_to_path(route_names, cache_drop_config)
+
+            if cache_drop_config and paths is not None:
+                cache_drop_config.paths.extend(paths)
 
             if cache_config or cache_drop_config:
                 cache_configuration = CacheConfiguration(
@@ -360,7 +363,7 @@ class FastCacheMiddleware(BaseMiddleware):
         if not cache_drop_config:
             return None
 
-        seen: set[str] = set()
+        unique: dict[str, re.Pattern] = {}
 
         for method in cache_drop_config.methods:
             name = get_name(method)
@@ -371,13 +374,10 @@ class FastCacheMiddleware(BaseMiddleware):
             regex = compile_path(route)[0]
             key = regex.pattern
 
-            if key in seen:
-                continue
-            seen.add(key)
+            if key not in unique:
+                unique[key] = regex
 
-            cache_drop_config.paths.append(regex)
-
-        return cache_drop_config.paths
+        return list(unique.values())
 
     def _find_matching_route(
         self, request: Request, routes_info: list[RouteInfo]
