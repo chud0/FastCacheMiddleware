@@ -1,12 +1,12 @@
 import logging
 import re
 import time
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
-try:
-    from redis.asyncio import Redis
-except ImportError:
-    Redis = None  # type: ignore
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as RedisType
+else:
+    RedisType = Any
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class RedisStorage(BaseStorage):
     def __init__(
         self,
-        redis_client: Redis,
+        redis_client: RedisType,
         serializer: Optional[BaseSerializer] = None,
         ttl: Optional[Union[int, float]] = None,
         namespace: str = "cache",
