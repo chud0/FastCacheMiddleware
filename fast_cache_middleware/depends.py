@@ -46,9 +46,14 @@ class CacheDropConfig(BaseCacheConfigDepends):
             that matches the beginning of request path.
     """
 
-    def __init__(self, paths: list[str | re.Pattern]) -> None:
+    def __init__(
+        self,
+        paths: list[str | re.Pattern] | None = None,
+        methods: list[Callable] | None = None,
+    ) -> None:
         self.paths: list[re.Pattern] = [
-            p if isinstance(p, re.Pattern) else re.compile(f"^{p}") for p in paths
+            p if isinstance(p, re.Pattern) else re.compile(f"^{p}") for p in paths or []
         ]
+        self.methods: list[Callable] = methods or []
 
         self.dependency = self

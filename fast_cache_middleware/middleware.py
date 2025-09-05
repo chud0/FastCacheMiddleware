@@ -1,11 +1,12 @@
 import copy
 import logging
+import re
 import typing as tp
 
 from fastapi import FastAPI, routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Match, Mount
+from starlette.routing import Match, Mount, compile_path, get_name
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ._helpers import set_cache_age_in_openapi_schema
@@ -294,11 +295,18 @@ class FastCacheMiddleware(BaseMiddleware):
             routes: List of routes to analyze
         """
         routes_info = []
+        route_names = {route.name: route.path for route in routes}
+
         for route in routes:
             (
                 cache_config,
                 cache_drop_config,
             ) = self._extract_cache_configs_from_route(route)
+
+            paths = self._convert_methods_to_path(route_names, cache_drop_config)
+
+            if cache_drop_config and paths is not None:
+                cache_drop_config.paths.extend(paths)
 
             if cache_config or cache_drop_config:
                 cache_configuration = CacheConfiguration(
@@ -308,7 +316,6 @@ class FastCacheMiddleware(BaseMiddleware):
                         cache_drop_config.paths if cache_drop_config else None
                     ),
                 )
-
                 route_info = RouteInfo(
                     route=route,
                     cache_config=cache_configuration,
@@ -347,6 +354,30 @@ class FastCacheMiddleware(BaseMiddleware):
                 continue
 
         return cache_config, cache_drop_config
+
+    def _convert_methods_to_path(
+        self,
+        route_names: dict[str, str],
+        cache_drop_config: CacheDropConfig | None,
+    ) -> list[re.Pattern] | None:
+        if not cache_drop_config:
+            return None
+
+        unique: dict[str, re.Pattern] = {}
+
+        for method in cache_drop_config.methods:
+            name = get_name(method)
+            route = route_names.get(name)
+            if not route:
+                continue
+
+            regex = compile_path(route)[0]
+            key = regex.pattern
+
+            if key not in unique:
+                unique[key] = regex
+
+        return list(unique.values())
 
     def _find_matching_route(
         self, request: Request, routes_info: list[RouteInfo]

@@ -115,6 +115,19 @@ async def get_users() -> tp.List[UserResponse]:
     ]
 
 
+@app.get("/orgs/{org_id}/users/{user_id}", dependencies=[CacheConfig(max_age=300)])
+async def get_user_in_org(org_id: int, user_id: int) -> UserResponse:
+    """Получение пользователя в конкретной организации.
+
+    Пример более сложного пути с несколькими параметрами.
+    """
+    user = _USERS_STORAGE.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserResponse(user_id=user_id, name=user.name, email=user.email)
+
+
 @app.post("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
 async def create_user(user_id: int, user_data: User) -> UserResponse:
     """Создание пользователя с инвалидацией кеша.
@@ -137,7 +150,10 @@ async def update_user(user_id: int, user_data: User) -> UserResponse:
     return UserResponse(user_id=user_id, name=user_data.name, email=user_data.email)
 
 
-@app.delete("/users/{user_id}", dependencies=[CacheDropConfig(paths=["/users"])])
+@app.delete(
+    "/users/{user_id}",
+    dependencies=[CacheDropConfig(methods=[get_user, get_user_in_org])],
+)
 async def delete_user(user_id: int) -> UserResponse:
     """Удаление пользователя с инвалидацией кеша."""
     user = _USERS_STORAGE.get(user_id)
