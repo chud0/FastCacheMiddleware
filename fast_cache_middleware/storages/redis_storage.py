@@ -4,9 +4,9 @@ import time
 from typing import Optional, Union
 
 try:
-    from redis.asyncio import Redis
+    import redis.asyncio as redis
 except ImportError:
-    Redis = None  # type: ignore
+    redis = None  # type: ignore
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -26,11 +26,17 @@ logger = logging.getLogger(__name__)
 class RedisStorage(BaseStorage):
     def __init__(
         self,
-        redis_client: Redis,
+        redis_client: redis.Redis,
         serializer: Optional[BaseSerializer] = None,
         ttl: Optional[Union[int, float]] = None,
         namespace: str = "cache",
     ) -> None:
+        if redis is None:
+            raise ImportError(
+                "Redis is required for RedisStorage. "
+                "Install with Redis: fast-cache-middleware[redis]"
+            )
+
         super().__init__(serializer, ttl)
         self._serializer = serializer or JSONSerializer()
 
