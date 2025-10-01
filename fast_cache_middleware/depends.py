@@ -1,8 +1,10 @@
 import re
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional, Union
 
 from fastapi import params
 from starlette.requests import Request
+
+SyncOrAsync = Union[Callable[[Request], str], Callable[[Request], Awaitable[str]]]
 
 
 class BaseCacheConfigDepends(params.Depends):
@@ -29,7 +31,7 @@ class CacheConfig(BaseCacheConfigDepends):
     def __init__(
         self,
         max_age: int = 5 * 60,
-        key_func: Optional[Callable[[Request], str]] = None,
+        key_func: Optional[SyncOrAsync] = None,
     ) -> None:
         self.max_age = max_age
         self.key_func = key_func

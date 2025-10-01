@@ -4,8 +4,10 @@ import re
 from hashlib import blake2b
 from typing import Optional
 
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.routing import is_async_callable
 
 from .exceptions import NotFoundStorageError, TTLExpiredStorageError
 from .schemas import CacheConfiguration
@@ -140,20 +142,13 @@ class Controller:
     async def generate_cache_key(
         self, request: Request, cache_configuration: CacheConfiguration
     ) -> str:
-        """Generates cache key for request.
-
-        Args:
-            request: HTTP request
-            cache_config: Cache configuration
-
-        Returns:
-            str: Cache key
-        """
-        # Use custom key generation function if available
         if cache_configuration.key_func:
-            return cache_configuration.key_func(request)
+            kf = cache_configuration.key_func
 
-        # Use standard function
+            if is_async_callable(kf):
+                return await kf(request)  # type: ignore[no-any-return]
+            return await run_in_threadpool(kf, request)
+
         return generate_key(request)
 
     async def cache_response(

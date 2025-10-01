@@ -1,5 +1,5 @@
 import re
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import (
     BaseModel,
@@ -9,10 +9,9 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from starlette.requests import Request
 from starlette.routing import Route
 
-from .depends import CacheConfig, CacheDropConfig
+from .depends import SyncOrAsync
 
 
 class CacheConfiguration(BaseModel):
@@ -22,7 +21,7 @@ class CacheConfiguration(BaseModel):
         default=None,
         description="Cache lifetime in seconds. If None, caching is disabled.",
     )
-    key_func: Callable[[Request], str] | None = Field(
+    key_func: SyncOrAsync | None = Field(
         default=None,
         description="Custom cache key generation function. If None, default key generation is used.",
     )
