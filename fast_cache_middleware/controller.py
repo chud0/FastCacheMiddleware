@@ -147,7 +147,7 @@ class Controller:
 
             if is_async_callable(kf):
                 return await kf(request)  # type: ignore[no-any-return]
-            return await run_in_threadpool(kf, request)   # type: ignore[arg-type]
+            return await run_in_threadpool(kf, request)  # type: ignore[arg-type]
 
         return generate_key(request)
 
