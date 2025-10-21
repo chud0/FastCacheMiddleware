@@ -58,19 +58,17 @@ class RedisStorage(BaseStorage):
         metadata["write_time"] = current_time
 
         value = await self._serializer.dumps(response, request, metadata)
-        logger.debug("Serialized data: %s", value)
         ttl = metadata.get("ttl", self._ttl)
         logger.debug(f"TTL: %s", ttl)
 
         full_key = self._full_key(key)
-        logger.debug(f"Full key: %s", full_key)
 
         if await self._storage.exists(full_key):
             logger.info("Element %s removed from cache - overwrite", key)
             await self._storage.delete(full_key)
 
         await self._storage.set(full_key, value, ex=ttl)
-        logger.info("Data written to Redis")
+        logger.info("Data written to Redis, ket=%s", full_key)
 
     async def get(self, key: str) -> StoredResponse:
         """
@@ -85,8 +83,6 @@ class RedisStorage(BaseStorage):
 
         if raw_data is None:
             raise NotFoundStorageError(key)
-
-        logger.debug(f"Takin data from Redis: %s", raw_data)
 
         return self._serializer.loads(raw_data)
 
@@ -104,7 +100,7 @@ class RedisStorage(BaseStorage):
         result = await self._storage.scan(match=pattern)
 
         if not result[1]:
-            logger.warning("The search did not find any matches")
+            logger.warning("A search in the repository did not reveal any matches.")
             return
 
         logger.debug(f"Result: %s", result[1])
