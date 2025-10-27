@@ -68,7 +68,7 @@ class RedisStorage(BaseStorage):
             await self._storage.delete(full_key)
 
         await self._storage.set(full_key, value, ex=ttl)
-        logger.info("Data written to Redis, ket=%s", full_key)
+        logger.info("Data written to Redis, key=%s", full_key)
 
     async def get(self, key: str) -> StoredResponse:
         """
