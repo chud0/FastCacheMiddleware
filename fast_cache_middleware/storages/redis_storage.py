@@ -31,9 +31,9 @@ class RedisStorage(BaseStorage):
         ttl: Optional[Union[int, float]] = None,
         namespace: str = "cache",
     ) -> None:
-        if redis is None:
-            raise ImportError(
-                "Redis is required for RedisStorage. "
+        if not isinstance(redis_client, redis.Redis) or redis_client is None:
+            raise StorageError(
+                "Redis async is required for RedisStorage. "
                 "Install with Redis: fast-cache-middleware[redis]"
             )
 
