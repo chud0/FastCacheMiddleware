@@ -9,7 +9,9 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import is_async_callable
 
-from .exceptions import NotFoundStorageError, TTLExpiredStorageError
+from .exceptions import (
+    FastCacheMiddlewareError,
+)
 from .schemas import CacheConfiguration
 from .storages import BaseStorage
 
@@ -171,7 +173,12 @@ class Controller:
         """
         if await self.is_cachable_response(response):
             response.headers["X-Cache-Status"] = "HIT"
-            await storage.set(cache_key, response, request, {"ttl": ttl})
+
+            try:
+                await storage.set(cache_key, response, request, {"ttl": ttl})
+            except FastCacheMiddlewareError as e:
+                logger.warning("Failed to cache response: %s", e)
+
         else:
             logger.debug("Skip caching for response: %s", response.status_code)
 
@@ -190,8 +197,8 @@ class Controller:
 
         try:
             result = await storage.get(cache_key)
-        except (NotFoundStorageError, TTLExpiredStorageError) as e:
-            logger.warning(e)
+        except FastCacheMiddlewareError as e:
+            logger.warning("Couldn't get the cache: %s", e)
             return None
 
         if result is None:
