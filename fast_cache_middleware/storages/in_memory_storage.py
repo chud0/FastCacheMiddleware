@@ -82,7 +82,10 @@ class InMemoryStorage(BaseStorage):
             logger.info("Element %s removed from cache - overwrite", key)
             self._pop_item(key)
 
-        self._storage[key] = (response, request, metadata)
+        try:
+            self._storage[key] = (response, request, metadata)
+        except Exception as e:
+            raise StorageError(e)
 
         data_ttl = metadata.get("ttl", self._ttl)
         if data_ttl is not None:
@@ -114,7 +117,12 @@ class InMemoryStorage(BaseStorage):
 
         self._storage.move_to_end(key)
 
-        return self._storage[key]
+        try:
+            cache = self._storage[key]
+        except Exception as e:
+            raise StorageError(e)
+
+        return cache
 
     async def delete(self, path: re.Pattern) -> None:
         """Removes responses from cache by request path pattern.
