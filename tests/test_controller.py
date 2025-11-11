@@ -10,6 +10,7 @@ from starlette.responses import Response
 
 from fast_cache_middleware.controller import Controller
 from fast_cache_middleware.exceptions import (
+    FastCacheMiddlewareError,
     NotFoundStorageError,
     TTLExpiredStorageError,
 )
@@ -248,3 +249,51 @@ class TestCacheResponse:
         assert call_args[0][1] == mock_response  # response
         assert call_args[0][2] == mock_request  # request
         assert call_args[0][3]["ttl"] == 600  # metadata
+
+    @pytest.mark.asyncio
+    async def test_cache_response_raises_and_logs_error(
+        self,
+        controller: Controller,
+        mock_storage: MagicMock,
+        mock_request: Request,
+        mock_response: Response,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Проверяет, что при ошибке кэширования пишется лог и исключение не пробрасывается."""
+
+        error = FastCacheMiddlewareError("storage failure")
+        mock_storage.set.side_effect = error
+
+        caplog.set_level(logging.WARNING)
+
+        await controller.cache_response(
+            "test_key", mock_request, mock_response, mock_storage, 600
+        )
+
+        mock_storage.set.assert_called_once()
+
+        assert "Failed to cache response" in caplog.text
+        assert "storage failure" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_get_cache_response_raises_and_logs_error(
+        self,
+        controller: Controller,
+        mock_storage: MagicMock,
+        mock_request: Request,
+        mock_response: Response,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Проверяет, что при ошибке получения кэша пишется лог и исключение не пробрасывается."""
+
+        error = FastCacheMiddlewareError("storage failure")
+        mock_storage.get.side_effect = error
+
+        caplog.set_level(logging.WARNING)
+
+        await controller.get_cached_response("test_key", mock_storage)
+
+        mock_storage.get.assert_called_once()
+
+        assert "Couldn't get the cache" in caplog.text
+        assert "storage failure" in caplog.text

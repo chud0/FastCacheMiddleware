@@ -82,7 +82,10 @@ class InMemoryStorage(BaseStorage):
             logger.info("Element %s removed from cache - overwrite", key)
             self._pop_item(key)
 
-        self._storage[key] = (response, request, metadata)
+        try:
+            self._storage[key] = (response, request, metadata)
+        except TypeError as e:
+            raise StorageError(e)
 
         data_ttl = metadata.get("ttl", self._ttl)
         if data_ttl is not None:
