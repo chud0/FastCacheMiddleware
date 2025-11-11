@@ -175,7 +175,7 @@ class Controller:
             try:
                 await storage.set(cache_key, response, request, {"ttl": ttl})
             except FastCacheMiddlewareError as e:
-                logger.warning("Failed to cache response: %s", e)
+                logger.error("Failed to cache response: %s", e)
 
         else:
             logger.debug("Skip caching for response: %s", response.status_code)
@@ -196,7 +196,7 @@ class Controller:
         try:
             result = await storage.get(cache_key)
         except FastCacheMiddlewareError as e:
-            logger.warning("Couldn't get the cache: %s", e)
+            logger.error("Couldn't get the cache: %s", e)
             return None
 
         if result is None:
