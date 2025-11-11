@@ -8,7 +8,7 @@ try:
 except ImportError:
     redis = None  # type: ignore
 
-from redis.exceptions import RedisError
+from redis.exceptions import ConnectionError, TimeoutError
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -109,6 +109,12 @@ class RedisStorage(BaseStorage):
             await self._storage.delete(value)
             logger.info(f"Key deleted from Redis: %s", value)
 
+    async def exists(self, key: str) -> int:
+        try:
+            return await self._storage.exists(key)
+        except (TimeoutError, ConnectionError) as e:
+            raise StorageError(f"Redis error: {e}")
+
     async def close(self) -> None:
         await self._storage.flushdb()
         logger.debug("Cache storage cleared")
@@ -117,7 +123,4 @@ class RedisStorage(BaseStorage):
         return f"{self._namespace}:{key}"
 
     async def _check_exists(self, key: str) -> int:
-        try:
-            return await self._storage.exists(key)
-        except RedisError as e:
-            raise StorageError(e)
+        return await self.exists(key)
