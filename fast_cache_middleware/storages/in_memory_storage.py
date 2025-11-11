@@ -84,7 +84,7 @@ class InMemoryStorage(BaseStorage):
 
         try:
             self._storage[key] = (response, request, metadata)
-        except Exception as e:
+        except TypeError as e:
             raise StorageError(e)
 
         data_ttl = metadata.get("ttl", self._ttl)
@@ -117,12 +117,7 @@ class InMemoryStorage(BaseStorage):
 
         self._storage.move_to_end(key)
 
-        try:
-            cache = self._storage[key]
-        except Exception as e:
-            raise StorageError(e)
-
-        return cache
+        return self._storage[key]
 
     async def delete(self, path: re.Pattern) -> None:
         """Removes responses from cache by request path pattern.
