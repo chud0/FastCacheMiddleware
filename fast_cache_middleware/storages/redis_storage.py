@@ -64,7 +64,7 @@ class RedisStorage(BaseStorage):
 
         full_key = self._full_key(key)
 
-        if await self._check_exists(full_key):
+        if await self.exists(full_key):
             logger.info("Element %s removed from cache - overwrite", key)
             await self._storage.delete(full_key)
 
@@ -77,7 +77,7 @@ class RedisStorage(BaseStorage):
         """
         full_key = self._full_key(key)
 
-        if not await self._check_exists(full_key):
+        if not await self.exists(full_key):
             raise TTLExpiredStorageError(full_key)
 
         raw_data = await self._storage.get(full_key)
@@ -121,6 +121,3 @@ class RedisStorage(BaseStorage):
 
     def _full_key(self, key: str) -> str:
         return f"{self._namespace}:{key}"
-
-    async def _check_exists(self, key: str) -> int:
-        return await self.exists(key)
