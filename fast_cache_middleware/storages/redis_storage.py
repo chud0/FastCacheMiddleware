@@ -8,6 +8,7 @@ try:
 except ImportError:
     redis = None  # type: ignore
 
+from redis.exceptions import ConnectionError, TimeoutError
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -63,7 +64,7 @@ class RedisStorage(BaseStorage):
 
         full_key = self._full_key(key)
 
-        if await self._storage.exists(full_key):
+        if await self.exists(full_key):
             logger.info("Element %s removed from cache - overwrite", key)
             await self._storage.delete(full_key)
 
@@ -76,7 +77,7 @@ class RedisStorage(BaseStorage):
         """
         full_key = self._full_key(key)
 
-        if not await self._storage.exists(full_key):
+        if not await self.exists(full_key):
             raise TTLExpiredStorageError(full_key)
 
         raw_data = await self._storage.get(full_key)
@@ -107,6 +108,12 @@ class RedisStorage(BaseStorage):
         for value in result[1]:
             await self._storage.delete(value)
             logger.info(f"Key deleted from Redis: %s", value)
+
+    async def exists(self, key: str) -> int:
+        try:
+            return await self._storage.exists(key)
+        except (TimeoutError, ConnectionError) as e:
+            raise StorageError(f"Redis error: {e}")
 
     async def close(self) -> None:
         await self._storage.flushdb()
