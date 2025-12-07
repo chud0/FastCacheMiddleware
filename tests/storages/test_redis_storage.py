@@ -187,7 +187,7 @@ async def test_remove_with_no_matches_logs_warning() -> None:
 
     pattern = re.compile(r"^/nothing.*")
 
-    async def empty_scan() -> AsyncGenerator[None]:
+    async def empty_scan() -> AsyncGenerator[str, None]:
         if False:
             yield  # type: ignore[unreachable]
         return
