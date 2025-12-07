@@ -1,6 +1,6 @@
 import re
-from typing import Type
-from unittest.mock import AsyncMock, MagicMock
+from typing import AsyncGenerator, Type
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from redis.asyncio import Redis as AsyncRedis
@@ -147,14 +147,31 @@ async def test_retrieve_returns_none_if_ttl_expired() -> None:
 @pytest.mark.asyncio
 async def test_remove_by_regex() -> None:
     mock_redis = AsyncMock(spec=AsyncRedis)
-    storage = RedisStorage(redis_client=mock_redis, namespace="myspace")
+
+    async def scan_gen() -> AsyncGenerator[str, str]:
+        yield "myspace:/api/test1"
+        yield "myspace:/api/test2"
+
+    mock_redis.scan_iter = MagicMock(return_value=scan_gen())
+    mock_redis.get = AsyncMock()
+    mock_redis.delete = AsyncMock()
+
+    mock_serializer = Mock()
+    req1 = Mock()
+    req1.url.path = "/api/test1"
+    req2 = Mock()
+    req2.url.path = "/api/test2"
+
+    mock_serializer.loads = Mock(side_effect=[(None, req1, None), (None, req2, None)])
+    mock_serializer.dumps = AsyncMock(
+        side_effect=lambda r, resp, meta: f"{r.url.path}-serialized"
+    )
+
+    storage = RedisStorage(
+        redis_client=mock_redis, serializer=mock_serializer, namespace="myspace"
+    )
 
     pattern = re.compile(r"^/api/.*")
-
-    mock_redis.scan = AsyncMock(
-        return_value=(0, ["myspace:/api/test1", "myspace:/api/test2"])
-    )
-    mock_redis.delete = AsyncMock()
 
     await storage.delete(pattern)
 
@@ -170,7 +187,14 @@ async def test_remove_with_no_matches_logs_warning() -> None:
 
     pattern = re.compile(r"^/nothing.*")
 
-    mock_redis.scan = AsyncMock(return_value=(0, []))
+    async def empty_scan() -> AsyncGenerator[None]:
+        if False:
+            yield  # type: ignore[unreachable]
+        return
+
+    mock_redis.scan_iter = MagicMock(return_value=empty_scan())
+
+    mock_redis.get = AsyncMock()
     mock_redis.delete = AsyncMock()
 
     await storage.delete(pattern)
