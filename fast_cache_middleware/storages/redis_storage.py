@@ -91,23 +91,17 @@ class RedisStorage(BaseStorage):
         """
         Deleting the cache using the specified path
         """
-        raw = path.pattern
-        if raw.startswith("^"):
-            raw = raw[1:]
 
-        pattern = self._full_key(str(raw.rstrip("$") + "/*"))
-        logger.debug(f"Removing key: %s", pattern)
+        async for key in self._storage.scan_iter(match=f"{self._namespace}:*"):
+            item = await self._storage.get(key)
+            if item is None:
+                continue
 
-        result = await self._storage.scan(match=pattern)
+            _, request, _ = self._serializer.loads(item)
 
-        if not result[1]:
-            logger.warning("A search in the repository did not reveal any matches.")
-            return
-
-        logger.debug(f"Result: %s", result[1])
-        for value in result[1]:
-            await self._storage.delete(value)
-            logger.info(f"Key deleted from Redis: %s", value)
+            if path.match(request.url.path):
+                await self._storage.delete(key)
+                logger.info(f"Key deleted from Redis: %s", key)
 
     async def exists(self, key: str) -> int:
         try:
