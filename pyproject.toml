@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fast-cache-middleware"
-version = "0.0.6"
+version = "0.0.7"
 description = "An intelligent middleware for caching FastAPI responses"
 authors = ["www.chud0@gmail.com"]
 readme = "README.md"
