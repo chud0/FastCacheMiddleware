@@ -2,7 +2,7 @@ import http
 import logging
 import re
 from hashlib import blake2b
-from typing import Union, Optional
+from typing import Optional, Union
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -101,9 +101,17 @@ class Controller:
             return False
 
         # Check Cache-Control headers
-        # todo: add parsing cache-control function
         cache_control = request.headers.get("cache-control", "").lower()
-        if "no-cache" in cache_control or "no-store" in cache_control:
+        cc = self._parse_cache_control(cache_control)
+
+        if any(
+            [
+                cc.get("no-store"),
+                cc.get("no-cache"),
+                cc.get("private"),
+                cc.get("max-age") == 0,
+            ]
+        ):
             return False
 
         return True
