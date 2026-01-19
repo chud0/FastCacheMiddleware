@@ -4,7 +4,6 @@ import re
 from typing import Optional
 
 from pydantic import BaseModel, Field
-
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import Response
@@ -19,12 +18,13 @@ logger = logging.getLogger(__name__)
 
 KNOWN_HTTP_METHODS = [method.value for method in http.HTTPMethod]
 
+
 class CacheControlDirectives(BaseModel):
     no_cache: bool = Field(default=False, alias="no-cache")
     no_store: bool = Field(default=False, alias="no-store")
-    private: bool = False
-    max_age: Optional[int] = None
-    s_maxage: Optional[int] = Field(default=None, alias="s-maxage")
+    private: bool = Field(default=False, alias="private")
+    max_age: int | None = Field(default=None, alias="max-age")
+    s_maxage: int | None = Field(default=None, alias="s-maxage")
     only_if_cached: bool = Field(default=False, alias="only-if-cached")
     no_transform: bool = Field(default=False, alias="no-transform")
 
@@ -104,7 +104,7 @@ class Controller:
                 "private": True
             }
         """
-        directives = {}
+        directives: dict[str, str | int | bool | None] = {}
 
         if not header:
             return CacheControlDirectives()
@@ -130,7 +130,7 @@ class Controller:
             else:
                 directives[part.lower()] = True
 
-        return CacheControlDirectives(**directives)
+        return CacheControlDirectives.model_validate(directives)
 
     async def is_cachable_response(self, response: Response) -> bool:
         """Determines if this response can be cached.
