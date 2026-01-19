@@ -75,3 +75,13 @@ class RouteInfo(BaseModel):
     @property
     def methods(self) -> set[str]:
         return getattr(self.route, "methods", set())
+
+
+class CacheControlDirectives(BaseModel):
+    no_cache: bool = Field(default=False, alias="no-cache")
+    no_store: bool = Field(default=False, alias="no-store")
+    private: bool = Field(default=False, alias="private")
+    max_age: int | None = Field(default=None, alias="max-age")
+    s_maxage: int | None = Field(default=None, alias="s-maxage")
+    only_if_cached: bool = Field(default=False, alias="only-if-cached")
+    no_transform: bool = Field(default=False, alias="no-transform")

@@ -3,7 +3,6 @@ import logging
 import re
 from typing import Optional
 
-from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import Response
@@ -11,22 +10,12 @@ from starlette.routing import is_async_callable
 
 from ._helpers import generate_key
 from .exceptions import FastCacheMiddlewareError
-from .schemas import CacheConfiguration
+from .schemas import CacheConfiguration, CacheControlDirectives
 from .storages import BaseStorage
 
 logger = logging.getLogger(__name__)
 
 KNOWN_HTTP_METHODS = [method.value for method in http.HTTPMethod]
-
-
-class CacheControlDirectives(BaseModel):
-    no_cache: bool = Field(default=False, alias="no-cache")
-    no_store: bool = Field(default=False, alias="no-store")
-    private: bool = Field(default=False, alias="private")
-    max_age: int | None = Field(default=None, alias="max-age")
-    s_maxage: int | None = Field(default=None, alias="s-maxage")
-    only_if_cached: bool = Field(default=False, alias="only-if-cached")
-    no_transform: bool = Field(default=False, alias="no-transform")
 
 
 class Controller:
