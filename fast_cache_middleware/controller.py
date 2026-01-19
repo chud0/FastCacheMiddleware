@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import is_async_callable
 
+from ._helpers import generate_key
 from .exceptions import FastCacheMiddlewareError
 from .schemas import CacheConfiguration
 from .storages import BaseStorage
