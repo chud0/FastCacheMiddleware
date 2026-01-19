@@ -1,8 +1,9 @@
 import http
 import logging
 import re
-from hashlib import blake2b
-from typing import Optional, Union
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -16,36 +17,16 @@ from .storages import BaseStorage
 
 logger = logging.getLogger(__name__)
 
-CacheControlDirectives = dict[str, Union[bool, str, int]]
 KNOWN_HTTP_METHODS = [method.value for method in http.HTTPMethod]
 
-
-def generate_key(request: Request) -> str:
-    """Generates fast unique key for caching HTTP request.
-
-    Args:
-        request: Starlette Request object.
-
-    Returns:
-        str: Unique key for caching, based on request method and path.
-        Uses fast blake2b hashing algorithm.
-
-    Note:
-        Does not consider scheme and host, as requests usually go to the same host.
-        Only considers method, path and query parameters for maximum performance.
-    """
-    # Get only necessary components from scope
-    scope = request.scope
-    url = scope["path"]
-    if scope["query_string"]:
-        url += f"?{scope['query_string'].decode('ascii')}"
-
-    # Use fast blake2b algorithm with minimal digest size
-    key = blake2b(digest_size=8)
-    key.update(request.method.encode())
-    key.update(url.encode())
-
-    return key.hexdigest()
+class CacheControlDirectives(BaseModel):
+    no_cache: bool = Field(default=False, alias="no-cache")
+    no_store: bool = Field(default=False, alias="no-store")
+    private: bool = False
+    max_age: Optional[int] = None
+    s_maxage: Optional[int] = Field(default=None, alias="s-maxage")
+    only_if_cached: bool = Field(default=False, alias="only-if-cached")
+    no_transform: bool = Field(default=False, alias="no-transform")
 
 
 class Controller:
@@ -105,14 +86,7 @@ class Controller:
         cache_control = request.headers.get("cache-control", "").lower()
         cc = self._parse_cache_control(cache_control)
 
-        if any(
-            [
-                cc.get("no-store"),
-                cc.get("no-cache"),
-                cc.get("private"),
-                cc.get("max-age") == 0,
-            ]
-        ):
+        if cc.no_store or cc.no_cache or cc.private or cc.max_age == 0:
             return False
 
         return True
@@ -130,10 +104,10 @@ class Controller:
                 "private": True
             }
         """
-        directives: CacheControlDirectives = {}
+        directives = {}
 
         if not header:
-            return directives
+            return CacheControlDirectives()
 
         for part in header.split(","):
             part = part.strip()
@@ -156,7 +130,7 @@ class Controller:
             else:
                 directives[part.lower()] = True
 
-        return directives
+        return CacheControlDirectives(**directives)
 
     async def is_cachable_response(self, response: Response) -> bool:
         """Determines if this response can be cached.
