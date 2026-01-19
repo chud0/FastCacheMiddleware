@@ -2,7 +2,7 @@ import http
 import logging
 import re
 from hashlib import blake2b
-from typing import Optional
+from typing import Union, Optional
 
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -15,6 +15,7 @@ from .storages import BaseStorage
 
 logger = logging.getLogger(__name__)
 
+CacheControlDirectives = dict[str, Union[bool, str, int]]
 KNOWN_HTTP_METHODS = [method.value for method in http.HTTPMethod]
 
 
@@ -106,6 +107,47 @@ class Controller:
             return False
 
         return True
+
+    def _parse_cache_control(self, header: str) -> CacheControlDirectives:
+        """
+        Parse Cache-Control header into directives.
+
+        Example:
+            "max-age=60, no-cache, private"
+            ->
+            {
+                "max-age": 60,
+                "no-cache": True,
+                "private": True
+            }
+        """
+        directives: CacheControlDirectives = {}
+
+        if not header:
+            return directives
+
+        for part in header.split(","):
+            part = part.strip()
+            if not part:
+                continue
+
+            if "=" in part:
+                key, value = part.split("=", 1)
+                key = key.lower()
+                value = value.strip().strip('"')
+
+                # numeric directives
+                if key in {"max-age", "s-maxage", "min-fresh"}:
+                    try:
+                        directives[key] = int(value)
+                    except ValueError:
+                        continue
+                else:
+                    directives[key] = value
+            else:
+                directives[part.lower()] = True
+
+        return directives
 
     async def is_cachable_response(self, response: Response) -> bool:
         """Determines if this response can be cached.
