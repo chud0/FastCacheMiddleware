@@ -1,7 +1,6 @@
 import http
 import logging
 import re
-from hashlib import blake2b
 from typing import Optional
 
 from starlette.concurrency import run_in_threadpool
@@ -9,41 +8,14 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import is_async_callable
 
+from ._helpers import generate_key
 from .exceptions import FastCacheMiddlewareError
-from .schemas import CacheConfiguration
+from .schemas import CacheConfiguration, CacheControlDirectives
 from .storages import BaseStorage
 
 logger = logging.getLogger(__name__)
 
 KNOWN_HTTP_METHODS = [method.value for method in http.HTTPMethod]
-
-
-def generate_key(request: Request) -> str:
-    """Generates fast unique key for caching HTTP request.
-
-    Args:
-        request: Starlette Request object.
-
-    Returns:
-        str: Unique key for caching, based on request method and path.
-        Uses fast blake2b hashing algorithm.
-
-    Note:
-        Does not consider scheme and host, as requests usually go to the same host.
-        Only considers method, path and query parameters for maximum performance.
-    """
-    # Get only necessary components from scope
-    scope = request.scope
-    url = scope["path"]
-    if scope["query_string"]:
-        url += f"?{scope['query_string'].decode('ascii')}"
-
-    # Use fast blake2b algorithm with minimal digest size
-    key = blake2b(digest_size=8)
-    key.update(request.method.encode())
-    key.update(url.encode())
-
-    return key.hexdigest()
 
 
 class Controller:
@@ -100,12 +72,54 @@ class Controller:
             return False
 
         # Check Cache-Control headers
-        # todo: add parsing cache-control function
         cache_control = request.headers.get("cache-control", "").lower()
-        if "no-cache" in cache_control or "no-store" in cache_control:
+        cc = self._parse_cache_control(cache_control)
+
+        if cc.no_store or cc.no_cache or cc.private or cc.max_age == 0:
             return False
 
         return True
+
+    def _parse_cache_control(self, header: str) -> CacheControlDirectives:
+        """
+        Parse Cache-Control header into directives.
+
+        Example:
+            "max-age=60, no-cache, private"
+            ->
+            {
+                "max-age": 60,
+                "no-cache": True,
+                "private": True
+            }
+        """
+        directives: dict[str, str | int | bool | None] = {}
+
+        if not header:
+            return CacheControlDirectives()
+
+        for part in header.split(","):
+            part = part.strip()
+            if not part:
+                continue
+
+            if "=" in part:
+                key, value = part.split("=", 1)
+                key = key.lower()
+                value = value.strip().strip('"')
+
+                # numeric directives
+                if key in {"max-age", "s-maxage", "min-fresh"}:
+                    try:
+                        directives[key] = int(value)
+                    except ValueError:
+                        continue
+                else:
+                    directives[key] = value
+            else:
+                directives[part.lower()] = True
+
+        return CacheControlDirectives.model_validate(directives)
 
     async def is_cachable_response(self, response: Response) -> bool:
         """Determines if this response can be cached.
