@@ -13,6 +13,7 @@ TODO:
 from .controller import Controller
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
 from .middleware import FastCacheMiddleware
+from .serializers import BaseSerializer, JSONSerializer
 from .storages import BaseStorage, InMemoryStorage, RedisStorage
 
 __version__ = "1.0.0"
@@ -31,5 +32,5 @@ __all__ = [
     "RedisStorage",
     # Serialization
     "BaseSerializer",
-    "DefaultSerializer",
+    "JSONSerializer",
 ]
