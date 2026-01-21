@@ -4,8 +4,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from fast_cache_middleware.storages import BaseStorage
 from fast_cache_middleware.controller import Controller
+from fast_cache_middleware.storages import BaseStorage
 
 from .base import BaseSendWrapper
 
