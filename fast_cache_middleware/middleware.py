@@ -3,12 +3,13 @@ import logging
 import re
 import typing as tp
 
-from fastapi import FastAPI, routing
+from fastapi import routing
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.routing import Match, Mount, compile_path, get_name
+from starlette.routing import Match, compile_path, get_name
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from _helpers import get_app_routes, get_routes
 from ._helpers import set_cache_age_in_openapi_schema
 from .controller import Controller
 from .depends import BaseCacheConfigDepends, CacheConfig, CacheDropConfig
@@ -136,56 +137,6 @@ class CacheSendWrapper(BaseSendWrapper):
             storage=self.storage,
             ttl=self.ttl,
         )
-
-
-def get_app_routes(app: FastAPI) -> tp.List[routing.APIRoute]:
-    """Gets all routes from FastAPI application.
-
-    Recursively traverses all application routers and collects their routes.
-
-    Args:
-        app: FastAPI application
-
-    Returns:
-        List of all application routes
-    """
-    routes = []
-
-    # Get routes from main application router
-    routes.extend(get_routes(app.router))
-
-    # Traverse all nested routers
-    for route in app.router.routes:
-        if isinstance(route, Mount):
-            if isinstance(route.app, routing.APIRouter):
-                routes.extend(get_routes(route.app))
-
-    return routes
-
-
-def get_routes(router: routing.APIRouter) -> list[routing.APIRoute]:
-    """Recursively gets all routes from router.
-
-    Traverses all routes in router and its sub-routers, collecting them into a single list.
-
-    Args:
-        router: APIRouter to traverse
-
-    Returns:
-        List of all routes from router and its sub-routers
-    """
-    routes = []
-
-    # Get all routes from current router
-    for route in router.routes:
-        if isinstance(route, routing.APIRoute):
-            routes.append(route)
-        elif isinstance(route, Mount):
-            # Recursively traverse sub-routers
-            if isinstance(route.app, routing.APIRouter):
-                routes.extend(get_routes(route.app))
-
-    return routes
 
 
 class FastCacheMiddleware(BaseMiddleware):
